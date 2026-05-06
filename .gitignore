@@ -1,0 +1,115 @@
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+
+# ─── Build Output ─────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+*.js.map
+*.tsbuildinfo
+
+# ─── Environment & Secrets (NEVER COMMIT) ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.example
+!.env.test.example
+
+# JWT Keys (RS256)
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.p8
+private.key
+public.key
+
+# AWS
+*.aws-credentials
+aws-exports.js
+
+# ─── React Native / Expo ──────────────────────────────────────────────────────
+.expo/
+.expo-shared/
+expo-env.d.ts
+
+# Android
+apps/mobile/android/.gradle/
+apps/mobile/android/app/build/
+apps/mobile/android/build/
+apps/mobile/android/local.properties
+apps/mobile/android/*.keystore
+!apps/mobile/android/debug.keystore
+apps/mobile/android/app/release/
+*.jks
+
+# iOS
+apps/mobile/ios/build/
+apps/mobile/ios/Pods/
+apps/mobile/ios/DerivedData/
+apps/mobile/ios/*.xcworkspace/xcuserdata/
+apps/mobile/ios/*.xcodeproj/xcuserdata/
+apps/mobile/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+*.mobileprovision
+*.provisionprofile
+
+# Metro bundler cache
+apps/mobile/.metro-health-check*
+.metro_cache/
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.orig
+*.rej
+*.iml
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# ─── Coverage & Test Artifacts ────────────────────────────────────────────────
+coverage/
+*.lcov
+jest-results.json
+test-results/
+.nyc_output/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── Monorepo / Tooling Cache ─────────────────────────────────────────────────
+.turbo/
+.nx/cache/
+.cache/
+tmp/
+temp/
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.temp

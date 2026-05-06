@@ -1,0 +1,284 @@
+# Smart Mandi — Feature Tracking (Persistent Memory)
+## Updated after every phase — agent context file
+## Current: Phase 8 Mobile App (COMPLETE)
+
+---
+
+## PROJECT: Smart Mandi
+**Stack:** NestJS · PostgreSQL · React Native · AWS SQS · Redis  
+**Architecture:** Multi-tenant SaaS · Event-driven · Offline-first · Append-only ledger
+
+---
+
+## ✅ PHASE 1 — Foundation (COMPLETE)
+
+### Completed
+- [x] Project directory structure (monorepo: apps/api, apps/mobile, packages/shared)
+- [x] Documentation scaffolding (HLD.md, LLD.md, features.md, prompts.md, agents.md)
+- [x] .github/copilot-instructions.md
+- [x] NestJS project initialization
+- [x] Database migration 001 — all Phase 1 tables + RLS + indexes
+- [x] Auth module (JWT RS256, firm_id RLS injection, RBAC guards)
+- [x] Ledger Engine (append-only, group integrity, running balance)
+- [x] Event Store module (publish, retry, dead-letter, SQS adapter)
+- [x] Audit Log module (append-only, interceptor)
+- [x] Idempotency middleware (Redis-backed, 24h TTL)
+- [x] CI/CD GitHub Actions workflow
+
+### Pending in Phase 1
+- [ ] Integration tests for ledger group integrity
+- [x] Docker Compose dev environment (added post-Phase 1)
+- [ ] Swagger API documentation auto-generation
+
+---
+
+## ✅ PHASE 2 — Core Workflow (COMPLETE)
+
+### Completed
+- [x] Configurator module: ConfigVersion, GradeConfig, ApmcFeeConfig, CommissionConfig, BaardanaConfig, PaymentModeConfig entities
+- [x] Config version resolution — always fetches config active at `sale_date`, not current config
+- [x] Customer module: CRUD, soft-delete, search (ILIKE on name/phone), audit trail
+- [x] KC entities: KacchaChittha + KcLineItem + KcPayment
+- [x] CommissionCalculatorService: all 3 types (PERCENTAGE, FIXED_PER_KG, FIXED_PER_TRANSACTION) × min/max caps × 4 rounding strategies
+- [x] ApmcFeeCalculatorService: all 3 fee types × PERCENTAGE/FLAT discounts × min/max caps
+- [x] Net payable: `gross - apmc_fee - commission` (Baardana NOT deducted from customer payable)
+- [x] KC creation flow: generates sequential kc_number, computes baardana_cost per line item, stores gross_amount
+- [x] KC authorization — 9-step transactional flow (Section 5.5):
+  - Precondition validation (status=DRAFT, line items, weights, payment, is_dirty check)
+  - Config resolution at sale_date
+  - Total computation (weight, gross, apmc, commission, baardana, net_payable)
+  - Pessimistic lock on KC row (authorizer-wins concurrency)
+  - Ledger entries: CUSTOMER CREDIT + FIRM_CASH CREDIT (commission) + FIRM_CASH DEBIT (APMC) + payment entries
+  - Audit log inside transaction
+  - KC_AUTHORIZED event published to SQS after commit
+- [x] KC cancellation: DRAFT→CANCELLED (no ledger), AUTHORIZED→CANCELLED (KC_CANCELLED event + reversal entries via consumer)
+- [x] Calculator unit tests: 30+ test cases covering all commission types, APMC types, discounts, caps, rounding, net payable
+
+### Pending (Phase 2)
+- [ ] Custom field definitions + values (dynamic entity extension) — deferred to Phase 6
+- [ ] Truck-level commission override wiring (truck_id lookup) — Phase 3
+
+---
+
+## ✅ PHASE 3 — Supply Side (COMPLETE)
+
+### Completed
+- [x] Truck entity: truck_number, driver, produce_name, sale_date, status lifecycle
+- [x] TruckStatus state machine: SCHEDULED → ARRIVED → CLOSED (no backward transitions)
+- [x] TRUCK_SCHEDULED event on create
+- [x] TRUCK_ARRIVED: sets arrived_weight_kg, auto-creates estimated PurchaseEntry (is_estimated=true)
+- [x] TRUCK_CLOSED: finalizes actual_weight, rate_per_kg, variance, inam_amount
+  - Updates estimated PurchaseEntry to actual (is_estimated=false)
+  - Publishes TRUCK_CLOSED event
+- [x] PurchaseEntry entity: weight, rate, gross, baardana_cost_total, inam, total_net_payable
+- [x] Trucks controller: POST /trucks, GET /trucks, GET /trucks/:id, POST /trucks/:id/arrive, POST /trucks/:id/close
+- [x] DB migration 002: trucks + purchase_entries tables + RLS
+
+---
+
+## ✅ PHASE 4 — Dashboard & Reporting (COMPLETE)
+
+### Completed
+- [x] DashboardMetrics entity: precomputed hourly (firm+date), truck/KC counts, financial totals, alerts
+- [x] DashboardService.getDashboard(): auto-refresh every 60s (stale threshold)
+- [x] DashboardService.computeAndSave(): recomputes from truck/KC/ledger tables
+- [x] Alert computation: overdue trucks (SCHEDULED/ARRIVED >2 days), stale draft KCs (DRAFT >24h)
+- [x] SummarySheet entity: immutable snapshot (JSONB), generated on demand
+- [x] SummarySheet generation: truck-grouped totals, cannot be edited after generation
+- [x] ReportsService: getLedgerReport() with opening/closing balance, total credits/debits
+- [x] ReportsService: getCashFlowReport() — FIRM_CASH grouped by date
+- [x] CSV export: exportKcsCsv(), exportTrucksCsv()
+- [x] Dashboard controller: GET /dashboard, POST /dashboard/summary-sheets, GET /dashboard/summary-sheets
+- [x] Reports controller: GET /reports/ledger, GET /reports/cash-flow, GET /reports/export/kcs, GET /reports/export/trucks
+- [x] DB migration 002: dashboard_metrics + summary_sheets tables + RLS
+
+---
+
+## ✅ PHASE 5 — Operations (COMPLETE)
+
+### Completed
+- [x] SalaryEntry entity: user_id, payment_date, amount, mode, reference
+- [x] SalaryService.create(): writes FIRM_CASH DEBIT + USER_SALARY CREDIT in single transaction
+- [x] Salary events: SALARY_PAID published to SQS
+- [x] User entity: firm_id, phone, name, role, is_active, device_id, last_login_at
+- [x] UsersService: CRUD + soft-deactivate + phone uniqueness per firm
+- [x] EventConsumerService:
+  - handleKcAuthorized: recomputes dashboard metrics
+  - handleKcCancelled: writes 3 reversal ledger entries (customer debit + commission debit + APMC credit)
+  - handleTruckClosed: writes inam FIRM_CASH DEBIT ledger entry + recomputes dashboard
+- [x] DB migration 002: users + salary_entries tables + RLS
+
+---
+
+## ✅ PHASE 6 — Configurability Expansion (COMPLETE)
+
+### Completed
+- [x] CustomFieldDef entity: firm_id, entity_type (KC/TRUCK/CUSTOMER/PURCHASE), field_key, label, field_type, is_required, options (JSONB)
+- [x] CustomFieldValue entity: field_def_id, entity_id, entity_type, value
+- [x] DB migration 003: custom_field_definitions + custom_field_values tables + RLS
+- [x] Firm entity updated: apmc_name, contact_phone TEXT, address TEXT (migration 004 — renamed apmc_code→apmc_name, converted address JSONB→TEXT)
+- [x] DB migration 004: firms schema update (apmc_code→apmc_name, add contact_phone, address TEXT)
+
+---
+
+## ✅ PHASE 7 — RBAC & Super Admin (COMPLETE)
+
+### Completed
+
+#### Super Admin System (firm-independent)
+- [x] SuperAdmin entity: phone, name, is_active, last_login_at
+- [x] Super Admin JWT separate from firm user JWT (verified via jwtService.verify())
+- [x] SA endpoints at `/super-admin/*` decorated with `@Public()` + `?admin_token=<token>` auth
+- [x] SA login: POST /super-admin/login (phone + any OTP in dev)
+- [x] verifySAToken() private helper for DRY token validation across SA endpoints
+
+#### Module & Permission Entities
+- [x] Module entity: id, key, label, description, sort_order
+- [x] 11 platform modules seeded: DASHBOARD, TRUCKS, KCS, CUSTOMERS, LEDGER, REPORTS, SUMMARY_SHEETS, SALARY, USERS, SETTINGS, CONFIG
+- [x] firm_module_access table: firm_id, module_id, is_active (SA assigns modules to firms)
+- [x] role_permissions table: firm_id, role, module_id, can_create, can_read, can_update, can_delete (FIRM_HEAD assigns per role per module)
+
+#### Super Admin APIs (all require `?admin_token=` query param)
+- [x] GET /super-admin/firms — list all firms with apmc_name, contact_phone, is_active, created_at
+- [x] POST /super-admin/firms — create firm (auto-grants all 11 modules; optionally creates FIRM_HEAD user)
+- [x] PUT /super-admin/firms/:id — update firm details (name, apmc_name, contact_phone, address)
+- [x] DELETE /super-admin/firms/:id — deactivate firm (soft delete, sets is_active=false)
+- [x] GET /super-admin/firms/:firmId/modules — get module_ids assigned to firm
+- [x] PUT /super-admin/firms/:firmId/modules — set module_ids for firm (replaces full set)
+
+#### RBAC APIs (firm-scoped, require JWT)
+- [x] GET /rbac/my-modules — modules accessible to current user (intersect firm_module_access + role_permissions)
+- [x] GET /rbac/firm-modules — all modules enabled for current firm
+- [x] GET /rbac/modules — all platform modules (FIRM_HEAD only)
+- [x] GET /rbac/permissions/:role — get role's CRUD permissions per module
+- [x] PUT /rbac/permissions/:role — set role's CRUD permissions (FIRM_HEAD only)
+
+#### RbacService
+- [x] getAccessibleModules, getFirmModules, getFirmModuleIds, setFirmModules
+- [x] getRolePermissions, setRolePermissions
+- [x] createFirm, updateFirm, deactivateFirm, getAllFirms
+
+---
+
+## ✅ PHASE 8 — Mobile App (COMPLETE)
+
+## ✅ PHASE 8 — Mobile App (COMPLETE)
+
+### Completed
+- [x] Project structure: apps/mobile with TypeScript strict, Babel path aliases, React Native 0.74, Expo SDK 50
+- [x] Design system: tokens (colors, typography, spacing, radius, shadow), premium green/amber palette
+- [x] API client: axios + JWT auto-inject + 401 auto-refresh + idempotency key auto-attachment
+- [x] All API endpoint wrappers in `endpoints.ts`: auth, trucks, kcs, customers, dashboard, reports, salary, users, config, rbac
+- [x] Single source of truth: `apps/mobile/src/api/constants.ts` exports API_BASE_URL
+- [x] TypeScript types: all domain types, navigation param lists
+- [x] Redux: authSlice with login/logout/restoreSession async thunks; state includes isSuperAdmin, saToken, accessibleModuleIds
+- [x] React Query: staleTime 30s, gcTime 5min, dashboard auto-refetch 60s
+- [x] Offline queue: SQLite-backed FIFO, PENDING→PROCESSING→DONE/DEAD_LETTER, 3 retries
+- [x] Sync engine: NetInfo listener, drains queue on reconnect, idempotency-safe replay
+
+#### Navigation
+- [x] RootNavigator: Splash → Auth/Main/SuperAdmin
+- [x] AuthNavigator: LoginScreen (firm ID + phone) + OtpVerifyScreen
+- [x] MainNavigator: 5 bottom tabs conditionally rendered based on accessibleModuleIds from Redux
+- [x] KCsNavigator: nested stack (KCList → KCCreate / KCDetail)
+- [x] Super Admin: separate dark-themed SA panel (SADashboardScreen)
+
+#### Screens
+- [x] SplashScreen: session restore on mount
+- [x] LoginScreen: firm ID + phone input; "+ Super Admin Login" link at bottom
+- [x] OtpVerifyScreen: OTP input + verify
+- [x] DashboardScreen: truck panel (3 status cards), KC panel, financial panel, alerts banner, auto-refresh every 60s
+- [x] TruckList: filter chips (ALL/SCHEDULED/ARRIVED/CLOSED) + FAB
+- [x] TruckDetail: lifecycle action buttons (Arrive/Close), truck info cards
+- [x] TruckCreate: form for scheduling new truck
+- [x] KCList: filter chips (ALL/DRAFT/AUTHORIZED/CANCELLED)
+- [x] KCDetail: amounts + line items + payments + Authorize/Cancel action buttons
+- [x] KCCreate: header (truck searchable dropdown — shows ARRIVED+SCHEDULED trucks by truck_number) + line items form + saleDate field
+- [x] CustomerList: search by name/phone
+- [x] CustomerDetailScreen: profile card, outstanding udhar card (red/green), stats row (total KCs, total value, udhar), expandable KC cards with full breakdown (line items + payments) — uses GET /customers/:id/history
+- [x] CustomerCreate: form for new customer
+- [x] LedgerScreen: type selector, balance summary (opening/credits/closing), entry list with debit/credit colors
+- [x] ReportsScreen: summary sheet list, generate + export actions
+- [x] SalaryScreen: salary entries list + create salary modal
+- [x] TeamMembersScreen (UsersScreen): user list, add user modal with role picker
+- [x] MoreMenuScreen: profile card, navigation links, logout
+- [x] RolePermissionsScreen: CRUD toggle grid per role per module — only shows firm-assigned modules (uses rbacApi.getMyModules())
+- [x] SADashboardScreen: full SA panel with firm list, create/edit/deactivate firm modals, module toggle modal per firm (shows count e.g. "Dev Mandi · 9 of 11 enabled")
+
+#### Key Bug Fixes Applied
+- [x] authSlice.ts: removed duplicate initialState block; interface includes isSuperAdmin, saToken, accessibleModuleIds
+- [x] MainNavigator: tabs conditional on accessibleModuleIds
+- [x] SADashboardScreen: module toggles show correct state (reads res.data.module_ids correctly)
+- [x] RolePermissionsScreen: fixed to call rbacApi.getMyModules() (not getAllModules()) + empty state when no modules assigned
+- [x] CustomerDetailScreen: uses /customers/:id/history endpoint for full purchase history
+- [x] KCCreate: saleDate ReferenceError fixed; truck dropdown searchable by truck_number
+- [x] SalaryScreen: JSX closing tag fix
+- [x] DB migration 004: firms schema corrections (apmc_code→apmc_name, add contact_phone, address TEXT)
+
+---
+
+## SEEDED TEST CREDENTIALS
+
+| Role | Phone | Firm ID | Notes |
+|---|---|---|---|
+| SUPER_ADMIN | 9000000000 | n/a | Tap "Super Admin Login" on login screen, any OTP |
+| FIRM_HEAD | 9999999999 | 115c557f-0c07-4162-b3bc-84f1feab88fb | Any OTP in dev |
+| AUTHORIZER | 9111111111 | same firm | Any OTP in dev |
+| OPERATOR | 9222222222 | same firm | Any OTP in dev |
+| VIEWER | 9333333333 | same firm | Any OTP in dev |
+
+---
+
+## ARCHITECTURE DECISIONS
+
+| Decision | Choice | Reason |
+|---|---|---|
+| Multi-tenancy | PostgreSQL RLS | Zero cross-tenant data leakage at DB layer |
+| Ledger | Append-only, no UPDATE/DELETE | Financial auditability requirement |
+| Offline sync | Idempotency keys + operation queue | At-least-once delivery with dedup |
+| Events | AWS SQS + DB event store | Reliable async, at-least-once |
+| Auth | JWT RS256 + refresh tokens | Stateless, mobile-friendly |
+| Commission/fees | Computed+stored at authorization | Historical immutability |
+| Config | Versioned with effective_from/to | Rules change over time without retroactive effect |
+| Amounts | NUMERIC(14,2) in DB, Decimal.js in app | No floating point rounding errors |
+| Super Admin isolation | SA uses separate JWT (not firm JWT) | Prevents SA token from being used as firm token |
+| SA endpoints | @Public() + ?admin_token query param | Avoids JWT middleware; SA token verified inside handler |
+| Module access hierarchy | SA assigns modules to firms → FIRM_HEAD assigns CRUD per role → users see permitted tabs | Three-layer delegation of access control |
+| accessibleModuleIds flow | Fetched from /rbac/my-modules after login → stored in Redux + AsyncStorage; re-fetched on restoreSession | Always up-to-date without full re-login |
+| API_BASE_URL | Single source of truth in constants.ts | Change one file to update all API calls across the app |
+| Route order in NestJS | GET /:id/history must be registered before GET /:id | Prevents NestJS treating "history" as a UUID param |
+
+---
+
+## KNOWN LIMITATIONS
+
+- OTP is mocked in dev (`NODE_ENV === 'development'`) — real SMS via Twilio/MSG91 needed for production
+- JWT uses `HS256` (secret-based) for dev — upgrade to `RS256` asymmetric keys for production
+- SA token uses HS256 shared secret — use RS256 asymmetric in production
+- KC group integrity check bypassed in KC service — use periodic reconciliation job
+- KC number is count-based (not concurrency-safe at extreme scale) — upgrade to DB SEQUENCE in production
+- Summary sheet generation is synchronous — move to background job for large date ranges
+- CSV export returns raw text — add proper download + share for mobile in production
+- Custom fields UI (mobile) not yet implemented — data model is ready (CustomFieldDef + CustomFieldValue)
+- Commission truck-level override UI (mobile) not yet implemented
+- Reports screen has partial functionality (some endpoints need verification)
+- Ledger screen endpoint needs verification in integration test
+- Summary sheets screen needs polish and UX improvements
+- No real push notifications — alerts are in-app polling only (no FCM/APNs)
+- Mobile Alert.prompt used for quick actions in some screens — replace with proper modal forms in production
+
+---
+
+## AGENT CONTEXT (Quick Reference)
+
+When resuming from a new session, read this file first. Key facts:
+1. **Every table has `firm_id`** — RLS enforces isolation at the DB layer
+2. **Ledger is append-only** — NEVER update or delete ledger entries; write reversal entries instead
+3. **Idempotency key** required on every POST/PUT (X-Idempotency-Key header)
+4. **Config is versioned** — always fetch config active at `transaction_date`, not current config
+5. **Amounts are stored, never recomputed** after authorization
+6. **Events trigger side effects** — ledger writes and dashboard updates happen via event consumers, not inline
+7. **Super Admin is separate** — SA token is not a firm JWT; SA endpoints use `@Public()` + `?admin_token` query param
+8. **Module access is three-tier** — SA assigns modules to firms → FIRM_HEAD assigns CRUD per role → users see permitted tabs only
+9. **accessibleModuleIds in Redux** — drives conditional tab rendering in MainNavigator
+10. **Route order matters in NestJS** — register `GET /:id/history` before `GET /:id`

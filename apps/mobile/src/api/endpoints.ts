@@ -81,6 +81,7 @@ export const configApi = {
   listVersions: () => api.get('/config/versions'),
   getGrades: () => api.get('/config/grades'),
   getPaymentModes: () => api.get('/config/payment-modes'),
+  getBaardanaConfig: () => api.get('/config/baardana'),
 };
 
 // ─── RBAC ─────────────────────────────────────────────────────────────────────
@@ -141,4 +142,16 @@ export const superAdminApi = {
     axios.get(`${SA_BASE}/super-admin/firms/${firmId}/role-permissions?admin_token=${token}`),
   setRolePermissions: (firmId: string, role: string, permissions: object[], token: string) =>
     axios.put(`${SA_BASE}/super-admin/firms/${firmId}/role-permissions/${role}?admin_token=${token}`, { permissions }),
+  getBaardanaConfig: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/baardana?admin_token=${token}`),
+  setBaardanaConfig: (firmId: string, data: object, token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/baardana?admin_token=${token}`, data),
+  getGrades: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/grades?admin_token=${token}`),
+  createGrade: (firmId: string, data: object, token: string) =>
+    axios.post(`${SA_BASE}/super-admin/firms/${firmId}/config/grades?admin_token=${token}`, data),
+  updateGrade: (firmId: string, gradeId: string, data: object, token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/grades/${gradeId}?admin_token=${token}`, data),
+  toggleGrade: (firmId: string, gradeId: string, token: string) =>
+    axios.delete(`${SA_BASE}/super-admin/firms/${firmId}/config/grades/${gradeId}?admin_token=${token}`),
 };

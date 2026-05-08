@@ -292,4 +292,97 @@ export class SuperAdminController {
     if (!body.commission_type || body.commission_value == null) throw new BadRequestException('commission_type and commission_value are required');
     return this.configuratorService.upsertCommissionConfig(firmId, body, sa.sub);
   }
+
+  // ── Firm Config: Baardana ─────────────────────────────────────────────────
+
+  /** Get current baardana config for a firm */
+  @Public()
+  @Get('firms/:firmId/config/baardana')
+  @ApiOperation({ summary: 'Get baardana config for a firm (SA only)' })
+  async getBaardanaConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    const config = await this.configuratorService.getBaardanaConfigForFirm(firmId);
+    return config ?? { baardana_provider: 'FIRM', default_bags: 1, cost_per_unit: null, unit_label: 'bag' };
+  }
+
+  /** Set baardana config for a firm (closes old, creates new) */
+  @Public()
+  @Put('firms/:firmId/config/baardana')
+  @ApiOperation({ summary: 'Set baardana config for a firm (SA only)' })
+  async setBaardanaConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: {
+      cost_per_unit: number;
+      unit_label?: string;
+      baardana_provider: 'FIRM' | 'CUSTOMER';
+      default_bags: number;
+      rate_mode?: 'PER_KG' | 'PER_NAG';
+    },
+  ) {
+    const sa = this.verifySAToken(adminToken);
+    if (!body.baardana_provider) throw new BadRequestException('baardana_provider is required');
+    if (body.default_bags == null || body.default_bags < 0) throw new BadRequestException('default_bags must be a non-negative integer');
+    return this.configuratorService.upsertBaardanaConfig(firmId, body, sa.sub);
+  }
+
+  // ── Firm Config: Grades ───────────────────────────────────────────────────
+
+  /** List all grades for a firm (SA) — includes active and inactive */
+  @Public()
+  @Get('firms/:firmId/config/grades')
+  @ApiOperation({ summary: 'List all grade configs for a firm (SA only)' })
+  async getFirmGrades(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    return this.configuratorService.getAllGradesForFirm(firmId);
+  }
+
+  /** Create a new grade for a firm (SA) */
+  @Public()
+  @Post('firms/:firmId/config/grades')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a grade config for a firm (SA only)' })
+  async createFirmGrade(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: { grade_code: string; grade_label: string; sort_order?: number },
+  ) {
+    this.verifySAToken(adminToken);
+    if (!body.grade_code?.trim()) throw new BadRequestException('grade_code is required');
+    if (!body.grade_label?.trim()) throw new BadRequestException('grade_label is required');
+    return this.configuratorService.createGradeForFirm(firmId, body);
+  }
+
+  /** Update a grade's code/label/sort_order (SA) */
+  @Public()
+  @Put('firms/:firmId/config/grades/:gradeId')
+  @ApiOperation({ summary: 'Update a grade config for a firm (SA only)' })
+  async updateFirmGrade(
+    @Param('firmId') firmId: string,
+    @Param('gradeId') gradeId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: { grade_code?: string; grade_label?: string; sort_order?: number },
+  ) {
+    this.verifySAToken(adminToken);
+    return this.configuratorService.updateGradeForFirm(firmId, gradeId, body);
+  }
+
+  /** Toggle a grade active/inactive (soft delete) (SA) */
+  @Public()
+  @Delete('firms/:firmId/config/grades/:gradeId')
+  @ApiOperation({ summary: 'Toggle a grade active/inactive for a firm (SA only)' })
+  async toggleFirmGrade(
+    @Param('firmId') firmId: string,
+    @Param('gradeId') gradeId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    return this.configuratorService.toggleGradeActive(firmId, gradeId);
+  }
 }

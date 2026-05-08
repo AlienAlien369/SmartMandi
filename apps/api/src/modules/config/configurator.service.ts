@@ -126,6 +126,102 @@ export class ConfiguratorService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GRADE CONFIG (SUPER ADMIN CRUD)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get or auto-create the active config version for a firm (for SA grade ops). */
+  private async getOrCreateConfigVersion(firmId: string): Promise<ConfigVersion> {
+    const existing = await this.configVersionRepo.findOne({
+      where: { firm_id: firmId, is_active: true },
+      order: { effective_from: 'DESC' },
+    });
+    if (existing) return existing;
+
+    const last = await this.configVersionRepo.findOne({
+      where: { firm_id: firmId },
+      order: { version: 'DESC' },
+    });
+    const cv = this.configVersionRepo.create({
+      firm_id: firmId,
+      version: (last?.version ?? 0) + 1,
+      effective_from: new Date(),
+      effective_to: null,
+      is_active: true,
+      created_by: null,
+    });
+    return this.configVersionRepo.save(cv);
+  }
+
+  /** SA: List all grades for a firm (active + inactive), ordered by sort_order. */
+  async getAllGradesForFirm(firmId: string): Promise<GradeConfig[]> {
+    return this.gradeRepo.find({
+      where: { firm_id: firmId },
+      order: { sort_order: 'ASC' },
+    });
+  }
+
+  /** SA: Create a new grade for a firm under its active config version. */
+  async createGradeForFirm(
+    firmId: string,
+    dto: { grade_code: string; grade_label: string; sort_order?: number },
+  ): Promise<GradeConfig> {
+    const cv = await this.getOrCreateConfigVersion(firmId);
+    const code = dto.grade_code.trim().toUpperCase();
+
+    const duplicate = await this.gradeRepo.findOne({ where: { firm_id: firmId, grade_code: code } });
+    if (duplicate) throw new BadRequestException(`Grade code "${code}" already exists for this firm`);
+
+    // Auto-assign sort_order as max + 1 if not provided
+    let sortOrder = dto.sort_order;
+    if (sortOrder == null) {
+      const grades = await this.gradeRepo.find({ where: { firm_id: firmId }, order: { sort_order: 'DESC' }, take: 1 });
+      sortOrder = (grades[0]?.sort_order ?? 0) + 1;
+    }
+
+    const grade = this.gradeRepo.create({
+      firm_id: firmId,
+      config_version_id: cv.id,
+      grade_code: code,
+      grade_label: dto.grade_label.trim(),
+      description: null,
+      sort_order: sortOrder,
+      is_active: true,
+    });
+    return this.gradeRepo.save(grade);
+  }
+
+  /** SA: Update an existing grade's code, label, or sort_order. */
+  async updateGradeForFirm(
+    firmId: string,
+    gradeId: string,
+    dto: { grade_code?: string; grade_label?: string; sort_order?: number },
+  ): Promise<GradeConfig> {
+    const grade = await this.gradeRepo.findOne({ where: { id: gradeId, firm_id: firmId } });
+    if (!grade) throw new NotFoundException(`Grade ${gradeId} not found`);
+
+    if (dto.grade_code !== undefined) {
+      const code = dto.grade_code.trim().toUpperCase();
+      if (code !== grade.grade_code) {
+        const dup = await this.gradeRepo.findOne({ where: { firm_id: firmId, grade_code: code } });
+        if (dup) throw new BadRequestException(`Grade code "${code}" already exists`);
+      }
+      grade.grade_code = code;
+    }
+    if (dto.grade_label !== undefined) grade.grade_label = dto.grade_label.trim();
+    if (dto.sort_order !== undefined) grade.sort_order = dto.sort_order;
+
+    return this.gradeRepo.save(grade);
+  }
+
+  /** SA: Toggle a grade active/inactive (soft delete). */
+  async toggleGradeActive(firmId: string, gradeId: string): Promise<GradeConfig> {
+    const grade = await this.gradeRepo.findOne({ where: { id: gradeId, firm_id: firmId } });
+    if (!grade) throw new NotFoundException(`Grade ${gradeId} not found`);
+    grade.is_active = !grade.is_active;
+    return this.gradeRepo.save(grade);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // PAYMENT MODES
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -217,6 +313,60 @@ export class ConfiguratorService {
     });
 
     return this.apmcRepo.save(newConfig);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SUPER ADMIN — BAARDANA CONFIG MANAGEMENT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async getBaardanaConfigForFirm(firmId: string): Promise<BaardanaConfig | null> {
+    return this.baardanaRepo
+      .createQueryBuilder('b')
+      .where('b.firm_id = :firmId', { firmId })
+      .andWhere('b.effective_to IS NULL')
+      .orderBy('b.effective_from', 'DESC')
+      .getOne();
+  }
+
+  async upsertBaardanaConfig(
+    firmId: string,
+    dto: {
+      cost_per_unit: number;
+      unit_label?: string;
+      baardana_provider: 'FIRM' | 'CUSTOMER';
+      default_bags: number;
+      rate_mode?: 'PER_KG' | 'PER_NAG';
+    },
+    saId: string,
+  ): Promise<BaardanaConfig> {
+    let cv = await this.configVersionRepo.findOne({ where: { firm_id: firmId, is_active: true } });
+    if (!cv) {
+      cv = await this.configVersionRepo.save(
+        this.configVersionRepo.create({ firm_id: firmId, version: 1, effective_from: new Date(), effective_to: null, is_active: true, created_by: saId }),
+      );
+    }
+
+    // Close all open baardana configs for this firm
+    await this.baardanaRepo
+      .createQueryBuilder()
+      .update(BaardanaConfig)
+      .set({ effective_to: new Date() })
+      .where('firm_id = :firmId AND effective_to IS NULL', { firmId })
+      .execute();
+
+    const newConfig = this.baardanaRepo.create({
+      firm_id: firmId,
+      config_version_id: cv.id,
+      cost_per_unit: dto.cost_per_unit.toString(),
+      unit_label: dto.unit_label ?? 'bag',
+      baardana_provider: dto.baardana_provider,
+      default_bags: dto.default_bags,
+      rate_mode: dto.rate_mode ?? 'PER_KG',
+      effective_from: new Date(),
+      effective_to: null,
+    });
+
+    return this.baardanaRepo.save(newConfig);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

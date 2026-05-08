@@ -17,7 +17,7 @@ type Firm = {
 };
 type Module = { id: string; label: string; description: string; sort_order: number };
 
-type ActiveModal = 'none' | 'modules' | 'create' | 'edit' | 'config' | 'permissions';
+type ActiveModal = 'none' | 'modules' | 'create' | 'edit' | 'config' | 'permissions' | 'grades';
 
 const EMPTY_FORM = { name: '', apmc_name: '', contact_phone: '', address: '', head_name: '', head_phone: '' };
 
@@ -60,6 +60,13 @@ export function SADashboardScreen() {
   const [configForm, setConfigForm] = useState(EMPTY_CONFIG);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const setConfigField = (k: keyof typeof EMPTY_CONFIG) => (v: string) => setConfigForm(p => ({ ...p, [k]: v }));
+
+  // Grades modal state
+  type GradeItem = { id: string; grade_code: string; grade_label: string; sort_order: number; is_active: boolean };
+  const [gradeList, setGradeList] = useState<GradeItem[]>([]);
+  const [gradesLoading, setGradesLoading] = useState(false);
+  const [gradeForm, setGradeForm] = useState({ grade_code: '', grade_label: '' });
+  const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
 
   // Permissions modal state
   const [selectedRole, setSelectedRole] = useState<ConfigurableRole>('AUTHORIZER');
@@ -175,6 +182,19 @@ export function SADashboardScreen() {
     }
   };
 
+  const openGrades = async (firm: Firm) => {
+    setSelectedFirm(firm);
+    setGradeForm({ grade_code: '', grade_label: '' });
+    setEditingGradeId(null);
+    setGradesLoading(true);
+    setActiveModal('grades');
+    try {
+      const res = await superAdminApi.getGrades(firm.id, saToken);
+      setGradeList(res.data as any[]);
+    } catch { setGradeList([]); }
+    finally { setGradesLoading(false); }
+  };
+
   const handleRoleSwitch = async (role: ConfigurableRole) => {
     setSelectedRole(role);
     setPermsDirty(false);
@@ -201,6 +221,44 @@ export function SADashboardScreen() {
     },
     onSuccess: () => { setPermsDirty(false); Alert.alert('Saved ✅', `${selectedRole} permissions updated for ${selectedFirm?.name}`); },
     onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to save permissions'),
+  });
+
+  const refreshGrades = async (firmId: string) => {
+    const res = await superAdminApi.getGrades(firmId, saToken);
+    setGradeList(res.data as any[]);
+  };
+
+  const addGradeMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFirm) return;
+      if (!gradeForm.grade_code.trim()) throw new Error('Grade code is required');
+      if (!gradeForm.grade_label.trim()) throw new Error('Grade label is required');
+      await superAdminApi.createGrade(selectedFirm.id, gradeForm, saToken);
+      await refreshGrades(selectedFirm.id);
+    },
+    onSuccess: () => { setGradeForm({ grade_code: '', grade_label: '' }); },
+    onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to add grade'),
+  });
+
+  const updateGradeMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFirm || !editingGradeId) return;
+      if (!gradeForm.grade_code.trim()) throw new Error('Grade code is required');
+      if (!gradeForm.grade_label.trim()) throw new Error('Grade label is required');
+      await superAdminApi.updateGrade(selectedFirm.id, editingGradeId, gradeForm, saToken);
+      await refreshGrades(selectedFirm.id);
+    },
+    onSuccess: () => { setGradeForm({ grade_code: '', grade_label: '' }); setEditingGradeId(null); },
+    onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to update grade'),
+  });
+
+  const toggleGradeMutation = useMutation({
+    mutationFn: async (gradeId: string) => {
+      if (!selectedFirm) return;
+      await superAdminApi.toggleGrade(selectedFirm.id, gradeId, saToken);
+      await refreshGrades(selectedFirm.id);
+    },
+    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to toggle grade'),
   });
 
   const saveConfigMutation = useMutation({
@@ -331,7 +389,7 @@ export function SADashboardScreen() {
             <FirmCard key={firm.id} firm={firm}
               onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
               onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
-              onPermissions={() => openPermissions(firm)}
+              onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)}
             />
           ))}
           {inactiveFirms.length > 0 && (
@@ -341,7 +399,7 @@ export function SADashboardScreen() {
                 <FirmCard key={firm.id} firm={firm} inactive
                   onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
                   onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
-                  onPermissions={() => openPermissions(firm)}
+                  onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)}
                 />
               ))}
             </>
@@ -663,13 +721,150 @@ export function SADashboardScreen() {
           )}
         </View>}
       </Modal>
+
+      {/* ── Grade Config Modal ── */}
+      <Modal visible={activeModal === 'grades'} animationType="slide" presentationStyle="pageSheet">
+        {activeModal === 'grades' && <View style={styles.sheetContainer}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={styles.flex1}>
+              <Text style={styles.sheetTitle}>{'Grade Config'}</Text>
+              <Text style={styles.sheetSub}>{selectedFirm?.name ?? ''}</Text>
+            </View>
+            <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}>
+              <Text style={styles.sheetCloseText}>{'✕'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sheetHint}>{'Configure grade codes and labels for this firm\'s KC screen.'}</Text>
+
+          {gradesLoading ? (
+            <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} />
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+              {/* Grade list */}
+              {gradeList.length === 0 && (
+                <View style={{ alignItems: 'center', marginTop: 32 }}>
+                  <Text style={[styles.sheetSub, { fontSize: 14 }]}>{'No grades yet. Add one below.'}</Text>
+                </View>
+              )}
+              {gradeList.map((g, idx) => {
+                const isEditing = editingGradeId === g.id;
+                return (
+                  <View key={g.id} style={[styles.permRow, idx % 2 === 0 && styles.permRowAlt, { paddingVertical: 10 }]}>
+                    {isEditing ? (
+                      <View style={{ flex: 1, gap: 6 }}>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TextInput
+                            style={[styles.fieldInput, { flex: 1, marginBottom: 0 }]}
+                            value={gradeForm.grade_code}
+                            onChangeText={v => setGradeForm(p => ({ ...p, grade_code: v.toUpperCase() }))}
+                            placeholder={'Code (e.g. A)'}
+                            placeholderTextColor={'#94a3b8'}
+                            autoCapitalize={'characters'}
+                          />
+                          <TextInput
+                            style={[styles.fieldInput, { flex: 2, marginBottom: 0 }]}
+                            value={gradeForm.grade_label}
+                            onChangeText={v => setGradeForm(p => ({ ...p, grade_label: v }))}
+                            placeholder={'Label (e.g. Premium)'}
+                            placeholderTextColor={'#94a3b8'}
+                          />
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            style={[styles.primaryBtn, { flex: 1, paddingVertical: 8 }]}
+                            onPress={() => updateGradeMutation.mutate()}
+                            disabled={updateGradeMutation.isPending}
+                          >
+                            {updateGradeMutation.isPending
+                              ? <ActivityIndicator color={'#fff'} size={'small'} />
+                              : <Text style={styles.primaryBtnText}>{'Save'}</Text>}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.primaryBtn, { flex: 1, paddingVertical: 8, backgroundColor: '#334155' }]}
+                            onPress={() => { setEditingGradeId(null); setGradeForm({ grade_code: '', grade_label: '' }); }}
+                          >
+                            <Text style={styles.primaryBtnText}>{'Cancel'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+                          <View style={{ backgroundColor: g.is_active ? 'rgba(124,58,237,0.15)' : '#1e293b', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                            <Text style={{ color: g.is_active ? '#a78bfa' : '#64748b', fontWeight: '700', fontSize: 13 }}>{g.grade_code}</Text>
+                          </View>
+                          <Text style={[styles.permModuleName, !g.is_active && { color: '#475569' }]} numberOfLines={1}>{g.grade_label}</Text>
+                          {!g.is_active && <Text style={{ fontSize: 11, color: '#475569' }}>{'(off)'}</Text>}
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TouchableOpacity
+                            style={[styles.permBox, { width: 44, borderColor: '#3b82f6' }]}
+                            onPress={() => {
+                              setEditingGradeId(g.id);
+                              setGradeForm({ grade_code: g.grade_code, grade_label: g.grade_label });
+                            }}
+                          >
+                            <Text style={{ color: '#60a5fa', fontSize: 12 }}>{'✏️'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.permBox, { width: 44, borderColor: g.is_active ? '#ef4444' : '#10b981' }]}
+                            onPress={() => toggleGradeMutation.mutate(g.id)}
+                            disabled={toggleGradeMutation.isPending}
+                          >
+                            <Text style={{ color: g.is_active ? '#f87171' : '#34d399', fontSize: 12 }}>{g.is_active ? '🚫' : '✓'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* Add grade form */}
+              {editingGradeId === null && (
+                <View style={{ padding: 16, marginTop: 12, backgroundColor: 'rgba(124,58,237,0.06)', borderRadius: 12, marginHorizontal: 0 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e293b', marginBottom: 10 }}>{'＋ Add New Grade'}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                    <TextInput
+                      style={[styles.fieldInput, { flex: 1 }]}
+                      value={gradeForm.grade_code}
+                      onChangeText={v => setGradeForm(p => ({ ...p, grade_code: v.toUpperCase() }))}
+                      placeholder={'Code (A, B, C…)'}
+                      placeholderTextColor={'#94a3b8'}
+                      autoCapitalize={'characters'}
+                      maxLength={10}
+                    />
+                    <TextInput
+                      style={[styles.fieldInput, { flex: 2 }]}
+                      value={gradeForm.grade_label}
+                      onChangeText={v => setGradeForm(p => ({ ...p, grade_label: v }))}
+                      placeholder={'Label (e.g. Premium Quality)'}
+                      placeholderTextColor={'#94a3b8'}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, addGradeMutation.isPending && { opacity: 0.6 }]}
+                    onPress={() => addGradeMutation.mutate()}
+                    disabled={addGradeMutation.isPending}
+                  >
+                    {addGradeMutation.isPending
+                      ? <ActivityIndicator color={'#fff'} />
+                      : <Text style={styles.primaryBtnText}>{'Add Grade'}</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </View>}
+      </Modal>
     </View>
   );
 }
 
-function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, inactive }: {
+function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, onGrades, inactive }: {
   firm: Firm; onModules: () => void; onConfig: () => void; onEdit: () => void;
-  onDelete: () => void; onPermissions: () => void; inactive?: boolean;
+  onDelete: () => void; onPermissions: () => void; onGrades: () => void; inactive?: boolean;
 }) {
   const initials = firm.name.split(' ').slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
   return (
@@ -707,6 +902,10 @@ function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, 
           <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(16,185,129,0.12)' }]} onPress={onConfig}>
             <Text style={styles.actionTileIcon}>📊</Text>
             <Text style={[styles.actionTileText, { color: '#34d399' }]}>Rates</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(251,191,36,0.12)' }]} onPress={onGrades}>
+            <Text style={styles.actionTileIcon}>🏷️</Text>
+            <Text style={[styles.actionTileText, { color: '#fbbf24' }]}>Grades</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(245,158,11,0.12)' }]} onPress={onEdit}>
             <Text style={styles.actionTileIcon}>✏️</Text>

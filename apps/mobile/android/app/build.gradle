@@ -52,3 +52,6 @@ dependencies {
 }
 
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+
+// Firebase Google Services plugin — must be AFTER all other apply plugin lines
+apply plugin: "com.google.gms.google-services"

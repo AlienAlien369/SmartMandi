@@ -9,6 +9,7 @@ import { AuditAction } from '../../common/enums';
 
 interface CustomerFilters {
   search?: string;
+  sort_by?: 'name_asc' | 'name_desc' | 'udhar_desc' | 'udhar_asc' | 'kc_desc';
   page?: number;
   limit?: number;
 }
@@ -37,26 +38,74 @@ export class CustomersService {
   async findAll(
     firmId: string,
     filters: CustomerFilters = {},
-  ): Promise<{ data: Customer[]; meta: { total: number; page: number } }> {
+  ): Promise<{ data: any[]; meta: { total: number; page: number } }> {
     const page = Math.max(1, Number(filters.page ?? 1) || 1);
     const limit = Math.min(Math.max(1, Number(filters.limit ?? 50) || 50), 100);
+    const offset = (page - 1) * limit;
 
-    const qb = this.repo
-      .createQueryBuilder('c')
-      .where('c.firm_id = :firmId', { firmId })
-      .andWhere('c.deleted_at IS NULL')
-      .orderBy('c.name', 'ASC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    const params: any[] = [firmId];
+    let whereExtra = '';
 
     if (filters.search) {
-      qb.andWhere('(c.name ILIKE :s OR c.phone ILIKE :s)', {
-        s: `%${filters.search}%`,
-      });
+      params.push(`%${filters.search}%`);
+      whereExtra = ` AND (c.name ILIKE $${params.length} OR c.phone ILIKE $${params.length} OR c.address ILIKE $${params.length})`;
     }
 
-    const [data, total] = await qb.getManyAndCount();
-    return { data, meta: { total, page } };
+    const orderMap: Record<string, string> = {
+      name_asc:  'c.name ASC',
+      name_desc: 'c.name DESC',
+      udhar_desc: 'outstanding_udhar DESC NULLS LAST, c.name ASC',
+      udhar_asc:  'outstanding_udhar ASC NULLS LAST, c.name ASC',
+      kc_desc:    'kc_count DESC NULLS LAST, c.name ASC',
+    };
+    const orderClause = orderMap[filters.sort_by ?? ''] ?? 'c.name ASC';
+
+    const countRows = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM customers c
+       WHERE c.firm_id = $1 AND c.deleted_at IS NULL${whereExtra}`,
+      params,
+    );
+
+    params.push(limit, offset);
+    const data = await this.dataSource.query(
+      `SELECT c.id, c.firm_id, c.name, c.phone, c.address, c.version, c.created_at, c.updated_at,
+              true AS is_active,
+              COALESCE((
+                SELECT SUM(kc2.total_net_payable - COALESCE(paid.total_paid, 0))
+                FROM kaccha_chitthas kc2
+                LEFT JOIN (
+                  SELECT p.kc_id, SUM(p.amount) AS total_paid
+                  FROM kc_payments p
+                  GROUP BY p.kc_id
+                ) paid ON paid.kc_id = kc2.id
+                WHERE kc2.customer_id = c.id
+                  AND kc2.firm_id = c.firm_id
+                  AND kc2.status = 'AUTHORIZED'
+                  AND kc2.cancelled_at IS NULL
+                  AND kc2.total_net_payable > COALESCE(paid.total_paid, 0)
+              ), 0) AS outstanding_udhar,
+              (
+                SELECT COUNT(*)::int
+                FROM kaccha_chitthas kc3
+                WHERE kc3.customer_id = c.id
+                  AND kc3.firm_id = c.firm_id
+                  AND kc3.cancelled_at IS NULL
+              ) AS kc_count
+       FROM customers c
+       WHERE c.firm_id = $1 AND c.deleted_at IS NULL${whereExtra}
+       ORDER BY ${orderClause}
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      data: data.map((r: any) => ({
+        ...r,
+        outstanding_udhar: Number(r.outstanding_udhar ?? 0),
+        kc_count: Number(r.kc_count ?? 0),
+      })),
+      meta: { total: countRows[0]?.total ?? 0, page },
+    };
   }
 
   async findOne(id: string, firmId: string): Promise<Customer> {
@@ -169,10 +218,17 @@ export class CustomersService {
       return acc;
     }, {});
 
-    // Calculate outstanding udhar = sum of all udhar payments across all KCs
-    const outstanding_udhar = payments
-      .filter((p: any) => p.is_udhar)
-      .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+    // Outstanding udhar = sum of (total_net_payable - total_paid) for AUTHORIZED KCs
+    // where total_paid < total_net_payable (i.e. firm still owes the customer)
+    const outstanding_udhar = kcs
+      .filter((k: any) => k.status === 'AUTHORIZED')
+      .reduce((sum: number, kc: any) => {
+        const netPayable = Number(kc.total_net_payable || 0);
+        const totalPaid = (pmtByKc[kc.id] || [])
+          .reduce((s: number, p: any) => s + Number(p.amount), 0);
+        const unpaid = netPayable - totalPaid;
+        return sum + (unpaid > 0 ? unpaid : 0);
+      }, 0);
 
     const total_purchase_amount = kcs.reduce(
       (sum: number, kc: any) => sum + Number(kc.total_net_payable || 0), 0,

@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import { RbacService } from './rbac.service';
+import { ConfiguratorService } from '../config/configurator.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,6 +31,13 @@ export class RbacController {
   @ApiOperation({ summary: 'Get accessible modules and CRUD permissions for current user' })
   getMyModules(@CurrentFirmId() firmId: string, @CurrentUser() user: JwtPayload) {
     return this.rbacService.getAccessibleModules(firmId, user.role);
+  }
+
+  /** Get CRUD permissions for the current user's role and firm */
+  @Get('my-permissions')
+  @ApiOperation({ summary: 'Get CRUD permissions for current user role' })
+  getMyPermissions(@CurrentFirmId() firmId: string, @CurrentUser() user: JwtPayload) {
+    return this.rbacService.getMyPermissions(firmId, user.role);
   }
 
   /** Get all role permissions for the firm (Firm Head only) */
@@ -82,6 +90,7 @@ export class SuperAdminController {
   constructor(
     private readonly rbacService: RbacService,
     private readonly jwtService: JwtService,
+    private readonly configuratorService: ConfiguratorService,
   ) {}
 
   private verifySAToken(token: string): { sub: string } {
@@ -194,5 +203,93 @@ export class SuperAdminController {
   @Get('admins')
   getAdmins() {
     return this.rbacService.getAllSuperAdmins();
+  }
+
+  /** Get role permissions for a firm (SA) */
+  @Public()
+  @Get('firms/:firmId/role-permissions')
+  async getRolePermissions(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    return this.rbacService.getRolePermissions(firmId);
+  }
+
+  /** Set permissions for a specific role in a firm (SA) */
+  @Public()
+  @Put('firms/:firmId/role-permissions/:role')
+  async setRolePermissions(
+    @Param('firmId') firmId: string,
+    @Param('role') role: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: { permissions: Array<{ module_id: string; can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> },
+  ) {
+    const sa = this.verifySAToken(adminToken);
+    return this.rbacService.bulkSetRolePermissions(firmId, role, body.permissions, sa.sub);
+  }
+
+  // ── Firm Config: APMC Fee ─────────────────────────────────────────────────
+
+  /** Get current APMC fee config for a firm */
+  @Public()
+  @Get('firms/:firmId/config/apmc-fee')
+  @ApiOperation({ summary: 'Get APMC fee config for a firm (SA only)' })
+  async getApmcFeeConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    const config = await this.configuratorService.getApmcFeeConfigForFirm(firmId);
+    return config ?? { fee_type: null, fee_value: null, min_fee: null, max_fee: null };
+  }
+
+  /** Set APMC fee config for a firm (closes old, creates new) */
+  @Public()
+  @Put('firms/:firmId/config/apmc-fee')
+  @ApiOperation({ summary: 'Set APMC fee config for a firm (SA only)' })
+  async setApmcFeeConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: { fee_type: string; fee_value: number; min_fee?: number | null; max_fee?: number | null },
+  ) {
+    const sa = this.verifySAToken(adminToken);
+    if (!body.fee_type || body.fee_value == null) throw new BadRequestException('fee_type and fee_value are required');
+    return this.configuratorService.upsertApmcFeeConfig(firmId, body, sa.sub);
+  }
+
+  // ── Firm Config: Commission ───────────────────────────────────────────────
+
+  /** Get current commission config for a firm */
+  @Public()
+  @Get('firms/:firmId/config/commission')
+  @ApiOperation({ summary: 'Get commission config for a firm (SA only)' })
+  async getCommissionConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    const config = await this.configuratorService.getCommissionConfigForFirm(firmId);
+    return config ?? { commission_type: null, commission_value: null, rounding_strategy: 'ROUND_HALF_UP', min_commission: null, max_commission: null };
+  }
+
+  /** Set commission config for a firm (closes old, creates new) */
+  @Public()
+  @Put('firms/:firmId/config/commission')
+  @ApiOperation({ summary: 'Set commission config for a firm (SA only)' })
+  async setCommissionConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: {
+      commission_type: string;
+      commission_value: number;
+      rounding_strategy?: string;
+      min_commission?: number | null;
+      max_commission?: number | null;
+    },
+  ) {
+    const sa = this.verifySAToken(adminToken);
+    if (!body.commission_type || body.commission_value == null) throw new BadRequestException('commission_type and commission_value are required');
+    return this.configuratorService.upsertCommissionConfig(firmId, body, sa.sub);
   }
 }

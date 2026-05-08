@@ -46,7 +46,7 @@ export function SummarySheetsScreen() {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator style={{ flex: 1 }} size="large" color={colors.primary} />
+        <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />
       ) : (
         <FlatList
           data={sheets}
@@ -112,4 +112,5 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 48 },
   empty: { fontSize: typography.size.base, color: colors.textSecondary, fontWeight: typography.weight.medium },
   emptyHint: { fontSize: typography.size.sm, color: colors.textTertiary },
+  flex1: { flex: 1 },
 });

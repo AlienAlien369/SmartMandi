@@ -9,6 +9,8 @@
 
 **Scale target:** 500 firms · 100,000 transactions/day · Financial auditability
 
+**Current phase:** Phase 9 — CRUD Completion, Dynamic RBAC & Premium UI (all phases complete)
+
 ---
 
 ## 2. Architecture Overview
@@ -192,14 +194,14 @@ sequenceDiagram
 | Configurator | Versioned business rules | 2 |
 | Customers | Customer CRUD + ledger view + history API | 2 |
 | Kaccha Chittha | KC lifecycle + authorization engine | 2 |
-| Trucks | Truck lifecycle + purchase entries | 3 |
-| Dashboard | Precomputed metrics, alerts | 4 |
+| Trucks | Truck lifecycle + purchase entries + delete guard | 3 |
+| Dashboard | Precomputed metrics, alerts, date filters | 4 |
 | Reports | Summary sheet, CSV export, cash flow | 4 |
-| Salary | Salary entries + ledger | 5 |
-| Users | User CRUD + soft-deactivate | 5 |
+| Salary | Salary entries + ledger + reversal-on-delete | 5 |
+| Users | User CRUD + soft-delete (active filter) | 5 |
 | Custom Fields | Dynamic entity extension (field defs + values) | 6 |
-| RBAC | Module access control, role permissions | 7 |
-| Super Admin | Cross-firm management, module assignment | 7 |
+| RBAC | Module access control, dynamic role permissions | 7 |
+| Super Admin | Cross-firm management, module + permission assignment | 7 |
 
 ---
 
@@ -247,7 +249,7 @@ graph TB
 graph TB
     subgraph "Super Admin Panel (Mobile — Dark Theme)"
         SALogin[SA Login Screen<br/>phone + any OTP dev]
-        SADash[SADashboardScreen<br/>Firm list + module toggles]
+        SADash[SADashboardScreen<br/>Firm list + action tiles]
         SALogin --> SADash
     end
 
@@ -255,8 +257,10 @@ graph TB
         SACtrl[SuperAdminController<br/>@Public() + verifySAToken()]
         SAFirms[GET/POST/PUT/DELETE<br/>/super-admin/firms]
         SAModules[GET/PUT<br/>/super-admin/firms/:id/modules]
+        SAPerms[GET/PUT<br/>/super-admin/firms/:id/role-permissions/:role]
         SACtrl --> SAFirms
         SACtrl --> SAModules
+        SACtrl --> SAPerms
     end
 
     subgraph "Firm User Panel (Main App)"
@@ -270,9 +274,10 @@ graph TB
     subgraph "RBAC API Layer"
         RbacCtrl[RbacController<br/>JWT-authenticated]
         MyMods[GET /rbac/my-modules]
+        MyPerms[GET /rbac/my-permissions]
         FirmMods[GET /rbac/firm-modules]
         Perms[GET/PUT /rbac/permissions/:role]
-        RbacCtrl --> MyMods & FirmMods & Perms
+        RbacCtrl --> MyMods & MyPerms & FirmMods & Perms
     end
 
     SADash -->|admin_token| SACtrl
@@ -295,10 +300,37 @@ graph TD
 **Flow:**
 1. SA creates firm → auto-grants all 11 modules
 2. SA can restrict modules: PUT /super-admin/firms/:id/modules with subset of module_ids
-3. FIRM_HEAD assigns CRUD permissions per role per module: PUT /rbac/permissions/:role
-4. After login, mobile fetches GET /rbac/my-modules → stores `accessibleModuleIds` in Redux
-5. MainNavigator renders only the tabs whose module keys are in `accessibleModuleIds`
+3. **SA can configure role permissions**: PUT /super-admin/firms/:id/role-permissions/:role `{permissions: [{module_id, can_create, can_read, can_update, can_delete}]}`
+4. FIRM_HEAD assigns CRUD permissions per role per module: PUT /rbac/permissions/:role
+5. After login, mobile fetches GET /rbac/my-modules → stores `accessibleModuleIds` in Redux
+6. MainNavigator renders only the tabs whose module keys are in `accessibleModuleIds`
+7. Each screen calls `usePermissions(module)` → UI buttons (Add/Edit/Delete) conditionally rendered
 
 ---
 
-*Last updated: Phase 8 — All phases complete*
+## 12. Dynamic RBAC Flow
+
+```mermaid
+sequenceDiagram
+    participant Mobile as React Native App
+    participant Guard as PermissionsGuard
+    participant DB as PostgreSQL
+
+    Mobile->>Guard: DELETE /trucks/:id (JWT + X-Idempotency-Key)
+    Guard->>Guard: Extract role from JWT
+    alt FIRM_HEAD
+        Guard-->>Mobile: ✅ Allowed (bypass)
+    else AUTHORIZER / OPERATOR / VIEWER
+        Guard->>DB: SELECT can_delete FROM role_module_permissions<br/>WHERE firm_id=? AND role=? AND module_id='TRUCKS'
+        DB-->>Guard: {can_delete: true/false}
+        alt can_delete = true
+            Guard-->>Mobile: ✅ Allowed
+        else
+            Guard-->>Mobile: 403 Forbidden
+        end
+    end
+```
+
+---
+
+*Last updated: Phase 9 — CRUD Completion, Dynamic RBAC & Premium UI (all phases complete)*

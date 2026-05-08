@@ -9,21 +9,23 @@ import {
   CancelKCDto, UpdateLineItemsDto,
 } from './dto/kc.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, CurrentFirmId } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/jwt.strategy';
-import { UserRole, KCStatus } from '../../common/enums';
+import { KCStatus } from '../../common/enums';
+
+const MODULE = 'KC';
 
 @ApiTags('kaccha-chittha')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('kcs')
 export class KacchaChitthaController {
   constructor(private readonly service: KacchaChitthaService) {}
 
   @Post()
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER, UserRole.OPERATOR)
+  @RequirePermission(MODULE, 'create')
   @ApiOperation({ summary: 'Create a new Kaccha Chittha (DRAFT)' })
   @ApiHeader({ name: 'X-Idempotency-Key', required: true })
   create(@Body() dto: CreateKCDto, @CurrentFirmId() firmId: string, @CurrentUser() user: JwtPayload) {
@@ -31,17 +33,20 @@ export class KacchaChitthaController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List KCs with filters (date, truck, customer, status)' })
+  @ApiOperation({ summary: 'List KCs with filters (date, truck, customer, status, search, date range)' })
   findAll(
     @CurrentFirmId() firmId: string,
     @Query('date') date?: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+    @Query('search') search?: string,
     @Query('truck_id') truck_id?: string,
     @Query('customer_id') customer_id?: string,
     @Query('status') status?: KCStatus,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.service.findAll(firmId, { date, truck_id, customer_id, status, page, limit });
+    return this.service.findAll(firmId, { date, date_from, date_to, search, truck_id, customer_id, status, page, limit });
   }
 
   @Get(':id')
@@ -51,7 +56,7 @@ export class KacchaChitthaController {
   }
 
   @Patch(':id/items')
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER, UserRole.OPERATOR)
+  @RequirePermission(MODULE, 'update')
   @ApiOperation({ summary: 'Replace all line items on a DRAFT KC' })
   updateLineItems(
     @Param('id') id: string,
@@ -63,7 +68,7 @@ export class KacchaChitthaController {
   }
 
   @Post(':id/payments')
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER, UserRole.OPERATOR)
+  @RequirePermission(MODULE, 'update')
   @ApiOperation({ summary: 'Add a payment record to a DRAFT KC' })
   @ApiHeader({ name: 'X-Idempotency-Key', required: true })
   addPayment(
@@ -76,12 +81,9 @@ export class KacchaChitthaController {
   }
 
   @Post(':id/authorize')
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER)
+  @RequirePermission(MODULE, 'update')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Authorize KC — 9-step transactional flow',
-    description: 'Computes totals, writes ledger entries, publishes event. AUTHORIZER role required.',
-  })
+  @ApiOperation({ summary: 'Authorize KC — 9-step transactional flow' })
   authorize(
     @Param('id') id: string,
     @Body() dto: AuthorizeKCDto,
@@ -92,11 +94,9 @@ export class KacchaChitthaController {
   }
 
   @Post(':id/cancel')
-  @Roles(UserRole.FIRM_HEAD)
+  @RequirePermission(MODULE, 'delete')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Cancel KC (Firm Head only) — writes reversal entries if AUTHORIZED',
-  })
+  @ApiOperation({ summary: 'Cancel KC — writes reversal entries if AUTHORIZED' })
   cancel(
     @Param('id') id: string,
     @Body() dto: CancelKCDto,

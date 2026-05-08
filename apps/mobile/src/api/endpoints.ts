@@ -16,6 +16,7 @@ export const trucksApi = {
   create: (data: object) => api.post('/trucks', data),
   arrive: (id: string, data: object) => api.post(`/trucks/${id}/arrive`, data),
   close: (id: string, data: object) => api.post(`/trucks/${id}/close`, data),
+  delete: (id: string) => api.delete(`/trucks/${id}`),
 };
 
 // ─── KCs ─────────────────────────────────────────────────────────────────────
@@ -41,7 +42,8 @@ export const customersApi = {
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 export const dashboardApi = {
-  get: (date?: string) => api.get('/dashboard', { params: { date } }),
+  get: (params?: { date?: string; date_from?: string; date_to?: string }) =>
+    api.get('/dashboard', { params }),
   generateSummary: (sale_date: string) => api.post('/dashboard/summary-sheets', { sale_date }),
   listSummaries: (params?: object) => api.get('/dashboard/summary-sheets', { params }),
 };
@@ -50,14 +52,18 @@ export const dashboardApi = {
 export const reportsApi = {
   ledger: (params: object) => api.get('/reports/ledger', { params }),
   cashFlow: (from: string, to: string) => api.get('/reports/cash-flow', { params: { from, to } }),
-  exportKcs: (date: string) => api.get(`/reports/export/kcs`, { params: { date }, responseType: 'text' }),
-  exportTrucks: (date: string) => api.get(`/reports/export/trucks`, { params: { date }, responseType: 'text' }),
+  exportKcs: (params: { date_from: string; date_to: string }) =>
+    api.get('/reports/export/kcs', { params, responseType: 'text' }),
+  exportTrucks: (params: { date_from: string; date_to: string }) =>
+    api.get('/reports/export/trucks', { params, responseType: 'text' }),
 };
 
 // ─── Salary ──────────────────────────────────────────────────────────────────
 export const salaryApi = {
   list: (params?: object) => api.get('/salary', { params }),
   create: (data: object) => api.post('/salary', data),
+  update: (id: string, notes: string) => api.patch(`/salary/${id}`, { notes }),
+  delete: (id: string) => api.delete(`/salary/${id}`),
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -65,7 +71,8 @@ export const usersApi = {
   list: (params?: object) => api.get('/users', { params }),
   create: (data: object) => api.post('/users', data),
   update: (id: string, data: object) => api.patch(`/users/${id}`, data),
-  deactivate: (id: string) => api.delete(`/users/${id}`),
+  delete: (id: string) => api.delete(`/users/${id}`),
+  updateFcmToken: (fcmToken: string) => api.post('/users/fcm-token', { fcm_token: fcmToken }),
 };
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -79,6 +86,7 @@ export const configApi = {
 // ─── RBAC ─────────────────────────────────────────────────────────────────────
 export const rbacApi = {
   getMyModules: () => api.get('/rbac/my-modules'),
+  getMyPermissions: () => api.get('/rbac/my-permissions'),
   getAllModules: () => api.get('/rbac/modules'),
   getFirmModules: () => api.get('/rbac/firm-modules'),
   getAllPermissions: () => api.get('/rbac/permissions'),
@@ -121,4 +129,16 @@ export const superAdminApi = {
       { module_ids },
       { headers: { Authorization: `Bearer ${token}` } }
     ),
+  getApmcFeeConfig: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/apmc-fee?admin_token=${token}`),
+  setApmcFeeConfig: (firmId: string, data: object, token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/apmc-fee?admin_token=${token}`, data),
+  getCommissionConfig: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/commission?admin_token=${token}`),
+  setCommissionConfig: (firmId: string, data: object, token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/commission?admin_token=${token}`, data),
+  getRolePermissions: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/role-permissions?admin_token=${token}`),
+  setRolePermissions: (firmId: string, role: string, permissions: object[], token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/role-permissions/${role}?admin_token=${token}`, { permissions }),
 };

@@ -2,7 +2,7 @@
 
 > **Production-grade, multi-tenant SaaS for digital APMC mandi management**  
 > NestJS · PostgreSQL · React Native · AWS SQS · Redis  
-> Offline-first · Event-driven · Append-only ledger · Row-Level Security
+> Offline-first · Event-driven · Append-only ledger · Row-Level Security · Dynamic RBAC
 
 ---
 
@@ -14,37 +14,43 @@ SF/
 │   ├── api/                    # NestJS backend
 │   │   └── src/
 │   │       ├── modules/
-│   │       │   ├── auth/       # JWT auth + refresh tokens
-│   │       │   ├── ledger/     # Append-only ledger engine
-│   │       │   ├── events/     # SQS event store + consumers
-│   │       │   ├── audit/      # Audit log (immutable)
-│   │       │   ├── config/     # Versioned config (grade/APMC/commission)
-│   │       │   ├── customers/  # Customer CRUD
-│   │       │   ├── kaccha-chittha/ # KC workflow + authorization
-│   │       │   ├── trucks/     # Truck lifecycle + purchase entries
-│   │       │   ├── dashboard/  # Precomputed metrics + summary sheets
-│   │       │   ├── reports/    # Ledger views + CSV export
-│   │       │   ├── salary/     # Salary payments + ledger entries
-│   │       │   └── users/      # User management
+│   │       │   ├── auth/           # JWT auth + refresh tokens
+│   │       │   ├── ledger/         # Append-only ledger engine
+│   │       │   ├── events/         # SQS event store + consumers
+│   │       │   ├── audit/          # Audit log (immutable)
+│   │       │   ├── config/         # Versioned config (grade/APMC/commission)
+│   │       │   ├── customers/      # Customer CRUD + ledger history
+│   │       │   ├── kaccha-chittha/ # KC workflow + authorization engine
+│   │       │   ├── trucks/         # Truck lifecycle + purchase entries
+│   │       │   ├── dashboard/      # Precomputed metrics + summary sheets
+│   │       │   ├── reports/        # Ledger views + CSV export
+│   │       │   ├── salary/         # Salary payments + ledger entries
+│   │       │   ├── users/          # User management (soft-delete, active filter)
+│   │       │   └── rbac/           # Module access + role permissions + Super Admin
+│   │       ├── common/
+│   │       │   ├── guards/         # JwtAuthGuard, PermissionsGuard (dynamic RBAC)
+│   │       │   ├── decorators/     # @RequirePermission, @CurrentUser, @CurrentFirmId
+│   │       │   └── interceptors/   # FirmContextInterceptor (RLS injection)
 │   │       └── database/
-│   │           └── migrations/ # 001_initial_schema.sql, 002_phase3_6_schema.sql
-│   └── mobile/                 # React Native app (iOS + Android)
+│   │           └── migrations/     # 001–005 SQL migrations
+│   └── mobile/                 # React Native 0.74 + Expo SDK 50
 │       └── src/
-│           ├── api/            # Typed API client + endpoints
-│           ├── screens/        # All screens by domain
-│           ├── navigation/     # Stack + Tab navigators
-│           ├── store/          # Redux + auth slice
-│           ├── offline/        # SQLite queue + sync engine
-│           ├── theme/          # Design tokens
+│           ├── api/            # Typed API client + all endpoint wrappers
+│           ├── screens/        # All screens by domain (premium UI)
+│           ├── navigation/     # Stack + Tab navigators (RBAC-gated tabs)
+│           ├── store/          # Redux + authSlice (isSuperAdmin, saToken, accessibleModuleIds)
+│           ├── hooks/          # usePermissions, useOfflineQueue, useSyncEngine
+│           ├── theme/          # Design tokens (colors, typography, spacing, radius, shadow)
 │           └── types/          # Shared TypeScript types
 ├── docs/
-│   ├── HLD.md                  # High-Level Design + 8 Mermaid diagrams
+│   ├── HLD.md                  # High-Level Design + Mermaid diagrams
 │   ├── LLD.md                  # Low-Level Design + API contracts
-│   ├── features.md             # ← Persistent agent memory (ALL 6 phases)
-│   ├── agents.md               # 6 Copilot agent configs
-│   └── prompts.md              # Prompt log
+│   ├── features.md             # ← Persistent agent memory (ALL phases)
+│   ├── agents.md               # Specialized Copilot agent configs
+│   └── prompts.md              # Prompt log for reproducibility
 ├── .github/
 │   ├── copilot-instructions.md # Coding standards for all agents
+│   ├── copilot-instructions/   # Per-agent instruction files
 │   └── workflows/ci.yml        # CI pipeline
 └── docker-compose.yml          # Local dev (PostgreSQL 15 + Redis 7)
 ```
@@ -59,7 +65,7 @@ cd apps/api
 cp .env.example .env           # Fill in DB + JWT + Redis config
 docker compose up -d           # Start PostgreSQL + Redis
 npm install
-npm run migration:run          # Run migrations 001 + 002
+npm run migration:run          # Run migrations 001–005
 npm run start:dev              # Hot-reload dev server → http://localhost:3000
 # Swagger UI: http://localhost:3000/api
 ```
@@ -69,6 +75,8 @@ npm run start:dev              # Hot-reload dev server → http://localhost:3000
 cd apps/mobile
 npm install
 npx react-native run-android   # or run-ios
+# ADB tunnel for Android emulator/device:
+adb reverse tcp:3000 tcp:3000
 ```
 
 ---
@@ -82,7 +90,7 @@ npx react-native run-android   # or run-ios
 
 ### Ledger (append-only)
 - **NEVER** UPDATE or DELETE `ledger_entries`
-- Corrections via reversal entries only
+- Corrections and deletions via reversal entries only
 - `NUMERIC(14,2)` in DB, `Decimal.js` in app — no float arithmetic
 
 ### Events (at-least-once)
@@ -95,25 +103,41 @@ npx react-native run-android   # or run-ios
 - Auto-drain on network reconnect via NetInfo listener
 - Dead-letter after 3 retries (user notified)
 
+### Dynamic RBAC (3-tier)
+```
+Super Admin
+  └── assigns modules to firms (firm_module_access)
+        └── FIRM_HEAD assigns CRUD per role per module (role_module_permissions)
+              └── Users see only permitted tabs + buttons (Redux + PermissionsGuard)
+```
+- `PermissionsGuard` queries `role_module_permissions` per request at runtime
+- `@RequirePermission(module, action)` decorator on every write/delete endpoint
+- `FIRM_HEAD` bypasses all permission checks — always has full access
+- SA can configure role permissions for any firm via `/super-admin/firms/:id/role-permissions/:role`
+
 ---
 
 ## 📱 Mobile Screens
 
 | Screen | Description |
 |--------|-------------|
-| Login → OTP | Phone + Firm ID → OTP verify |
-| Dashboard | Truck status panel + KC counts + financial summary + alerts |
-| Truck List | Filter by SCHEDULED/ARRIVED/CLOSED, today's date |
-| Truck Detail | Lifecycle actions: Mark Arrived, Close Truck |
+| Login → OTP | Phone + Firm ID → OTP verify; tap "Super Admin Login" for SA panel |
+| Dashboard | Date filters · Truck status panel · KC counts · Financial summary · Alerts |
+| Truck List | Premium filter chips (ALL/SCHEDULED/ARRIVED/CLOSED) + date filter |
+| Truck Detail | Lifecycle actions: Mark Arrived, Close Truck (RBAC-gated) |
 | Truck Create | Schedule new truck with produce + driver |
-| KC List | Filter by DRAFT/AUTHORIZED/CANCELLED |
-| KC Detail | Amounts, line items, payments, Authorize/Cancel |
-| KC Create | Header + multi-line-item form |
+| KC List | Premium filter chips (ALL/DRAFT/AUTHORIZED/CANCELLED) + date filter |
+| KC Detail | Amounts · Line items · Payments · Authorize/Cancel (RBAC-gated) |
+| KC Create | Header + multi-line-item form + sale date picker |
 | Customer List | Search by name/phone |
-| Customer Detail | Info + future: ledger history |
-| Ledger | FIRM_CASH/CUSTOMER/TRUCK/USER_SALARY views with balance |
-| Reports | Summary sheets list + generate + CSV export |
-| More Menu | Profile, Ledger, Reports, Salary, Users, Settings, Logout |
+| Customer Detail | Profile · Outstanding udhar card · Full KC history |
+| Ledger | Date filter · FIRM_CASH/CUSTOMER/TRUCK/USER_SALARY views · Balance cards |
+| Reports | Summary sheets · CSV export (KC + Trucks) · Date range filter |
+| Salary | Entries list · Create · Edit notes · Delete (with reversal) · RBAC-gated |
+| Team Members | User list · Add · Edit role/name · Delete (RBAC-gated) |
+| More Menu | Profile · Logout · Navigation links |
+| Role Permissions | CRUD toggle grid per role per module (firm-assigned modules only) |
+| SA Dashboard | Dark-themed · Firm list · Create/Edit/Deactivate firm · Module toggles · Role permissions per firm |
 
 ---
 
@@ -122,25 +146,30 @@ npx react-native run-android   # or run-ios
 | Module | Endpoints |
 |--------|-----------|
 | **Auth** | `POST /auth/login` · `POST /auth/refresh` |
-| **Trucks** | `POST /trucks` · `GET /trucks` · `GET /trucks/:id` · `POST /trucks/:id/arrive` · `POST /trucks/:id/close` |
+| **Trucks** | `POST /trucks` · `GET /trucks` · `GET /trucks/:id` · `POST /trucks/:id/arrive` · `POST /trucks/:id/close` · `DELETE /trucks/:id` *(SCHEDULED only)* |
 | **KCs** | `POST /kcs` · `GET /kcs` · `GET /kcs/:id` · `PATCH /kcs/:id/items` · `POST /kcs/:id/payments` · `POST /kcs/:id/authorize` · `POST /kcs/:id/cancel` |
-| **Customers** | `POST /customers` · `GET /customers` · `GET /customers/:id` · `PATCH /customers/:id` · `DELETE /customers/:id` |
+| **Customers** | `POST /customers` · `GET /customers` · `GET /customers/:id` · `GET /customers/:id/history` · `PATCH /customers/:id` · `DELETE /customers/:id` |
 | **Config** | `POST /config/versions` · `GET /config/versions` · `POST /config/grade` · `GET /config/resolve` |
-| **Dashboard** | `GET /dashboard` · `POST /dashboard/summary-sheets` · `GET /dashboard/summary-sheets` |
+| **Dashboard** | `GET /dashboard` *(date params)* · `POST /dashboard/summary-sheets` · `GET /dashboard/summary-sheets` |
 | **Reports** | `GET /reports/ledger` · `GET /reports/cash-flow` · `GET /reports/export/kcs` · `GET /reports/export/trucks` |
-| **Salary** | `POST /salary` · `GET /salary` |
-| **Users** | `POST /users` · `GET /users` · `PATCH /users/:id` · `DELETE /users/:id` |
+| **Salary** | `POST /salary` · `GET /salary` · `PATCH /salary/:id` *(notes only)* · `DELETE /salary/:id` *(reversal entries)* |
+| **Users** | `POST /users` · `GET /users` *(active only)* · `PATCH /users/:id` · `DELETE /users/:id` *(soft-delete)* |
+| **RBAC** | `GET /rbac/my-modules` · `GET /rbac/my-permissions` · `GET /rbac/firm-modules` · `GET/PUT /rbac/permissions/:role` |
+| **Super Admin** | `POST /super-admin/login` · `GET/POST/PUT/DELETE /super-admin/firms` · `GET/PUT /super-admin/firms/:id/modules` · `GET/PUT /super-admin/firms/:id/role-permissions/:role` |
 
 ---
 
 ## 🔐 RBAC Roles
 
-| Role | Permissions |
-|------|-------------|
-| `FIRM_HEAD` | Full access including user management, config changes, salary |
-| `AUTHORIZER` | Create + authorize KCs, manage trucks, view everything |
-| `OPERATOR` | Create KCs and trucks, no authorization |
-| `VIEWER` | Read-only across all modules |
+| Role | Access |
+|------|--------|
+| `FIRM_HEAD` | Full access — bypasses permission checks; manages team, config, salary |
+| `AUTHORIZER` | Configurable per module by FIRM_HEAD/SA — typically: create+read+update KCs/trucks |
+| `OPERATOR` | Configurable per module by FIRM_HEAD/SA — typically: create+read KCs/trucks |
+| `VIEWER` | Configurable per module by FIRM_HEAD/SA — typically: read-only |
+| `SUPER_ADMIN` | Platform-level — manages all firms, module access, role permissions |
+
+> CRUD access per role per module is fully configurable at runtime via the Role Permissions screen or SA dashboard. UI buttons (Add/Edit/Delete) are automatically hidden when access is not granted.
 
 ---
 
@@ -169,14 +198,37 @@ net_payable = gross_amount - apmc_fee - commission
 # Baardana is tracked for firm analytics but NOT deducted from customer payable
 ```
 
+### Delete Strategies
+| Entity | Strategy | Reason |
+|--------|----------|--------|
+| User | Soft-delete (`is_active=false`) + `findAll` filters active-only | FK constraints from salary/ledger/audit tables |
+| Salary entry | Write reversal ledger entries → hard-delete row | Ledger is immutable; accounting preserved via reversals |
+| Truck | Hard-delete only if SCHEDULED | ARRIVED/CLOSED have financial records (PurchaseEntry, inam) |
+| Customer | Soft-delete | May have KC history and ledger entries |
+| Ledger entry | **Never delete** — write reversal entry | Immutable by design |
+
+---
+
+## 🧪 Dev Credentials
+
+| Role | Phone | Firm ID |
+|------|-------|---------|
+| Super Admin | 9000000000 | — |
+| Firm Head | 9999999999 | 115c557f-0c07-4162-b3bc-84f1feab88fb |
+| Authorizer | 9111111111 | same |
+| Operator | 9222222222 | same |
+| Viewer | 9333333333 | same |
+
+> Any OTP works in dev mode (`NODE_ENV=development`).
+
 ---
 
 ## 📄 Docs
 
 - **`docs/features.md`** — Persistent agent memory (read first in every new session)
-- **`docs/HLD.md`** — Architecture + 8 Mermaid diagrams  
+- **`docs/HLD.md`** — Architecture + Mermaid diagrams
 - **`docs/LLD.md`** — API contracts + class diagrams
-- **`docs/agents.md`** — 6 Copilot agent configs (backend, security, ledger, migration, test, docs)
+- **`docs/agents.md`** — Specialized Copilot agent configs
 - **`.github/copilot-instructions.md`** — Coding standards for all sessions
 
 ---
@@ -197,5 +249,3 @@ gh copilot agent migration-writer
 ---
 
 *Smart Mandi v2.0 — Built for 500 firms, 100,000 transactions/day*
-# SmartMandi
-# SmartMandi

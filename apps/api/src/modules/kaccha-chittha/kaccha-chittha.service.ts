@@ -139,7 +139,7 @@ export class KacchaChitthaService {
 
   async findAll(
     firmId: string,
-    filters: { date?: string; truck_id?: string; customer_id?: string; status?: KCStatus; page?: number; limit?: number },
+    filters: { date?: string; date_from?: string; date_to?: string; search?: string; truck_id?: string; customer_id?: string; status?: KCStatus; page?: number; limit?: number },
   ) {
     const page = Math.max(1, Number(filters.page ?? 1) || 1);
     const limit = Math.min(Math.max(1, Number(filters.limit ?? 50) || 50), 100);
@@ -147,14 +147,29 @@ export class KacchaChitthaService {
     const qb = this.kcRepo
       .createQueryBuilder('kc')
       .where('kc.firm_id = :firmId', { firmId })
-      .orderBy('kc.created_at', 'DESC')
+      .orderBy('kc.sale_date', 'DESC')
+      .addOrderBy('kc.created_at', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
-    if (filters.date) qb.andWhere('kc.sale_date = :date', { date: filters.date });
-    if (filters.truck_id) qb.andWhere('kc.truck_id = :truckId', { truckId: filters.truck_id });
+    // Exact date takes priority over range
+    if (filters.date) {
+      qb.andWhere('kc.sale_date = :date', { date: filters.date });
+    } else {
+      if (filters.date_from) qb.andWhere('kc.sale_date >= :date_from', { date_from: filters.date_from });
+      if (filters.date_to)   qb.andWhere('kc.sale_date <= :date_to',   { date_to:   filters.date_to });
+    }
+
+    if (filters.search) {
+      qb.andWhere(
+        '(kc.kc_number ILIKE :search)',
+        { search: `%${filters.search}%` },
+      );
+    }
+
+    if (filters.truck_id)    qb.andWhere('kc.truck_id = :truckId',       { truckId:    filters.truck_id });
     if (filters.customer_id) qb.andWhere('kc.customer_id = :customerId', { customerId: filters.customer_id });
-    if (filters.status) qb.andWhere('kc.status = :status', { status: filters.status });
+    if (filters.status)      qb.andWhere('kc.status = :status',          { status:     filters.status });
 
     const [data, total] = await qb.getManyAndCount();
     return { data, meta: { total, page, limit } };

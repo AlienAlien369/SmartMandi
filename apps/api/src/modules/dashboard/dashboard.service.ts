@@ -27,6 +27,59 @@ export class DashboardService {
     private readonly dataSource: DataSource,
   ) {}
 
+  /** Live computation for a date range (no caching). */
+  async getDashboardRange(firmId: string, dateFrom?: string, dateTo?: string): Promise<Partial<DashboardMetrics> & { computed_at: Date }> {
+    const from = dateFrom ?? new Date().toISOString().slice(0, 10);
+    const to   = dateTo   ?? new Date().toISOString().slice(0, 10);
+
+    const [truckCounts, kcCounts, financials, udhar] = await Promise.all([
+      this.computeTruckCountsRange(firmId, from, to),
+      this.computeKcCountsRange(firmId, from, to),
+      this.computeFinancialsRange(firmId, from, to),
+      this.computeUdhar(firmId),
+    ]);
+
+    return { firm_id: firmId, ...truckCounts, ...kcCounts, ...financials, total_udhar_outstanding: udhar, computed_at: new Date() };
+  }
+
+  private async computeTruckCountsRange(firmId: string, from: string, to: string) {
+    const base = { firm_id: firmId } as any;
+    const [s, a, c] = await Promise.all([
+      this.truckRepo.createQueryBuilder('t').where('t.firm_id = :firmId', { firmId }).andWhere('t.sale_date BETWEEN :from AND :to', { from, to }).andWhere('t.status = :s', { s: TruckStatus.SCHEDULED }).getCount(),
+      this.truckRepo.createQueryBuilder('t').where('t.firm_id = :firmId', { firmId }).andWhere('t.sale_date BETWEEN :from AND :to', { from, to }).andWhere('t.status = :s', { s: TruckStatus.ARRIVED }).getCount(),
+      this.truckRepo.createQueryBuilder('t').where('t.firm_id = :firmId', { firmId }).andWhere('t.sale_date BETWEEN :from AND :to', { from, to }).andWhere('t.status = :s', { s: TruckStatus.CLOSED }).getCount(),
+    ]);
+    return { trucks_scheduled: s, trucks_arrived: a, trucks_closed: c, trucks_in_progress: a };
+  }
+
+  private async computeKcCountsRange(firmId: string, from: string, to: string) {
+    const [total, authorized] = await Promise.all([
+      this.kcRepo.createQueryBuilder('kc').where('kc.firm_id = :firmId', { firmId }).andWhere('kc.sale_date BETWEEN :from AND :to', { from, to }).getCount(),
+      this.kcRepo.createQueryBuilder('kc').where('kc.firm_id = :firmId', { firmId }).andWhere('kc.sale_date BETWEEN :from AND :to', { from, to }).andWhere('kc.status = :s', { s: KCStatus.AUTHORIZED }).getCount(),
+    ]);
+    return { total_kc_count: total, total_kc_authorized: authorized };
+  }
+
+  private async computeFinancialsRange(firmId: string, from: string, to: string) {
+    const result = await this.kcRepo
+      .createQueryBuilder('kc')
+      .select([
+        'COALESCE(SUM(kc.total_gross_amount::numeric), 0) as total_sales_amount',
+        'COALESCE(SUM(kc.total_commission::numeric), 0) as total_commission_earned',
+        'COALESCE(SUM(kc.total_weight_kg::numeric), 0) as total_weight_sold_kg',
+      ])
+      .where('kc.firm_id = :firmId', { firmId })
+      .andWhere('kc.sale_date BETWEEN :from AND :to', { from, to })
+      .andWhere('kc.status = :status', { status: KCStatus.AUTHORIZED })
+      .getRawOne();
+
+    return {
+      total_sales_amount: new Decimal(result?.total_sales_amount ?? '0').toFixed(2),
+      total_commission_earned: new Decimal(result?.total_commission_earned ?? '0').toFixed(2),
+      total_weight_sold_kg: new Decimal(result?.total_weight_sold_kg ?? '0').toFixed(3),
+    };
+  }
+
   /** Get or compute today's dashboard metrics for a firm. */
   async getDashboard(firmId: string, date?: string): Promise<DashboardMetrics> {
     const targetDate = date ?? new Date().toISOString().slice(0, 10);

@@ -6,21 +6,22 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, CurrentFirmId } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/jwt.strategy';
-import { UserRole } from '../../common/enums';
+
+const MODULE = 'CUSTOMERS';
 
 @ApiTags('customers')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 
   @Post()
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER, UserRole.OPERATOR)
+  @RequirePermission(MODULE, 'create')
   @ApiOperation({ summary: 'Create a new customer' })
   create(
     @Body() dto: CreateCustomerDto,
@@ -54,7 +55,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.FIRM_HEAD, UserRole.AUTHORIZER, UserRole.OPERATOR)
+  @RequirePermission(MODULE, 'update')
   @ApiOperation({ summary: 'Update customer' })
   update(
     @Param('id') id: string,
@@ -66,9 +67,9 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.FIRM_HEAD)
+  @RequirePermission(MODULE, 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a customer (Firm Head only)' })
+  @ApiOperation({ summary: 'Soft-delete a customer' })
   remove(
     @Param('id') id: string,
     @CurrentFirmId() firmId: string,

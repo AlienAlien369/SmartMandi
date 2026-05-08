@@ -6,22 +6,23 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, CurrentFirmId } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/jwt.strategy';
-import { UserRole } from '../../common/enums';
+
+const MODULE = 'USERS';
 
 @ApiTags('users')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}
 
   @Post()
-  @Roles(UserRole.FIRM_HEAD)
-  @ApiOperation({ summary: 'Create a user for this firm (FIRM_HEAD only)' })
+  @RequirePermission(MODULE, 'create')
+  @ApiOperation({ summary: 'Create a user for this firm' })
   create(@Body() dto: CreateUserDto, @CurrentFirmId() firmId: string, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, firmId, user.sub);
   }
@@ -38,15 +39,27 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.FIRM_HEAD)
+  @RequirePermission(MODULE, 'update')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentFirmId() firmId: string) {
     return this.service.update(id, dto, firmId);
   }
 
   @Delete(':id')
-  @Roles(UserRole.FIRM_HEAD)
+  @RequirePermission(MODULE, 'delete')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deactivate(@Param('id') id: string, @CurrentFirmId() firmId: string) {
-    return this.service.deactivate(id, firmId);
+  @ApiOperation({ summary: 'Delete a user from this firm' })
+  remove(@Param('id') id: string, @CurrentFirmId() firmId: string) {
+    return this.service.delete(id, firmId);
+  }
+
+  /** Register or update FCM push token for the current user */
+  @Post('fcm-token')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Register FCM push notification token' })
+  async updateFcmToken(
+    @Body() body: { fcm_token: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.service.updateFcmToken(user.sub, body.fcm_token);
   }
 }

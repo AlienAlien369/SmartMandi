@@ -45,28 +45,44 @@ export class ReportsController {
   }
 
   @Get('export/kcs')
-  @ApiOperation({ summary: 'Export KCs as CSV for a sale date' })
+  @ApiOperation({ summary: 'Export KCs as CSV — single date or date range' })
+  @ApiQuery({ name: 'date', required: false })
+  @ApiQuery({ name: 'date_from', required: false })
+  @ApiQuery({ name: 'date_to', required: false })
   async exportKcs(
     @CurrentFirmId() firmId: string,
     @Query('date') date: string,
+    @Query('date_from') date_from: string,
+    @Query('date_to') date_to: string,
     @Res() res: Response,
   ) {
-    const csv = await this.service.exportKcsCsv(firmId, date);
+    const from = date_from || date;
+    const to   = date_to   || date;
+    const csv = await this.service.exportKcsCsv(firmId, from, to);
+    const label = from === to ? from : `${from}_to_${to}`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="kcs-${date}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="kcs-${label}.csv"`);
     res.send(csv);
   }
 
   @Get('export/trucks')
-  @ApiOperation({ summary: 'Export trucks as CSV for a sale date' })
+  @ApiOperation({ summary: 'Export trucks as CSV — single date or date range' })
+  @ApiQuery({ name: 'date', required: false })
+  @ApiQuery({ name: 'date_from', required: false })
+  @ApiQuery({ name: 'date_to', required: false })
   async exportTrucks(
     @CurrentFirmId() firmId: string,
     @Query('date') date: string,
+    @Query('date_from') date_from: string,
+    @Query('date_to') date_to: string,
     @Res() res: Response,
   ) {
-    const csv = await this.service.exportTrucksCsv(firmId, date);
+    const from = date_from || date;
+    const to   = date_to   || date;
+    const csv = await this.service.exportTrucksCsv(firmId, from, to);
+    const label = from === to ? from : `${from}_to_${to}`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="trucks-${date}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="trucks-${label}.csv"`);
     res.send(csv);
   }
 }

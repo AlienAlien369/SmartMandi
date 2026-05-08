@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StatusBar, Platform } from 'react-native';
+import { StatusBar } from 'react-native';
 import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -37,8 +37,8 @@ export default function App() {
           <QueryClientProvider client={queryClient}>
             <StatusBar
               barStyle="dark-content"
-              backgroundColor={colors.background}
-              translucent={Platform.OS === 'android'}
+              backgroundColor="transparent"
+              translucent={true}
             />
             <RootNavigator />
             <Toast />

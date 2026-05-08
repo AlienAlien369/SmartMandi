@@ -6,6 +6,7 @@ import Decimal from 'decimal.js';
 import { LedgerEntry } from '../ledger/ledger-entry.entity';
 import { KacchaChittha } from '../kaccha-chittha/entities/kaccha-chittha.entity';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { NotificationService } from '../notifications/notification.service';
 import { LedgerType, EntryType, SourceType, KCStatus } from '../../common/enums';
 
 /**
@@ -30,6 +31,7 @@ export class EventConsumerService {
     private readonly kcRepo: Repository<KacchaChittha>,
     private readonly dataSource: DataSource,
     private readonly dashboardService: DashboardService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async handleKcAuthorized(payload: {
@@ -40,6 +42,25 @@ export class EventConsumerService {
     this.logger.log(`KC_AUTHORIZED consumer: ${payload.kc_id}`);
     // Recompute dashboard metrics for the sale date
     await this.dashboardService.computeAndSave(payload.firm_id, payload.sale_date);
+
+    // Send push notification to all firm users except the authorizer
+    const kcs = await this.dataSource.query(
+      `SELECT kc.kc_number, kc.authorized_by, c.name AS customer_name
+       FROM kaccha_chitthas kc
+       LEFT JOIN customers c ON c.id = kc.customer_id
+       WHERE kc.id = $1`,
+      [payload.kc_id],
+    );
+    const kc = kcs[0];
+    if (kc) {
+      await this.notificationService.sendToFirmUsers(
+        payload.firm_id,
+        kc.authorized_by ?? '',
+        '✅ KC Authorized',
+        `KC ${kc.kc_number} for ${kc.customer_name ?? 'customer'} has been authorized`,
+        { type: 'KC_AUTHORIZED', kc_id: payload.kc_id, firm_id: payload.firm_id },
+      );
+    }
   }
 
   async handleKcCancelled(payload: {
@@ -166,6 +187,8 @@ export class EventConsumerService {
         });
 
         if (!existing) {
+          const groupId = uuidv4();
+          // FIRM_CASH DEBIT — cash going out for inam
           await qr.manager.save(
             LedgerEntry,
             qr.manager.create(LedgerEntry, {
@@ -175,9 +198,26 @@ export class EventConsumerService {
               amount: inam.toFixed(2),
               balance_after: '0.00',
               source_type: SourceType.INAM_PAID,
-              entry_group_id: uuidv4(),
+              entry_group_id: groupId,
               description: `Inam paid on truck close ${payload.truck_id}`,
               idempotency_key: idempotencyKey,
+              created_by: payload.closed_by,
+              truck_id: payload.truck_id,
+            }),
+          );
+          // TRUCK CREDIT — record inam payment against this truck
+          await qr.manager.save(
+            LedgerEntry,
+            qr.manager.create(LedgerEntry, {
+              firm_id: payload.firm_id,
+              ledger_type: LedgerType.TRUCK,
+              entry_type: EntryType.CREDIT,
+              amount: inam.toFixed(2),
+              balance_after: '0.00',
+              source_type: SourceType.INAM_PAID,
+              entry_group_id: groupId,
+              description: `Inam payment for truck close`,
+              idempotency_key: `truck-${payload.truck_id}-inam`,
               created_by: payload.closed_by,
               truck_id: payload.truck_id,
             }),

@@ -256,10 +256,11 @@ model: claude-sonnet-4-6
 You are a React Native Engineer fixing bugs in the Smart Mandi mobile app.
 
 ## Context Files to Read First
-- docs/features.md — Phase 8 section (Mobile App, Key Bug Fixes)
+- docs/features.md — Phase 8+9 sections (Mobile App, Key Bug Fixes, CRUD Completion)
 - apps/mobile/src/api/constants.ts — API_BASE_URL (single source of truth)
 - apps/mobile/src/store/authSlice.ts — Redux state shape (isSuperAdmin, saToken, accessibleModuleIds)
 - apps/mobile/src/navigation/ — navigator structure
+- apps/mobile/src/hooks/usePermissions.ts — RBAC permission hook
 
 ## Common Issues to Check
 1. Duplicate initialState blocks in Redux slices → keep only one
@@ -270,6 +271,10 @@ You are a React Native Engineer fixing bugs in the Smart Mandi mobile app.
 6. Screens using hard-coded module lists instead of Redux accessibleModuleIds
 7. CustomerDetail screen must use /customers/:id/history endpoint (not /customers/:id)
 8. Truck dropdown in KCCreate must search by truck_number and show ARRIVED+SCHEDULED only
+9. RBAC gates: Add buttons → perms.can_create, Edit → perms.can_update, Delete → perms.can_delete
+10. usersApi.deactivate no longer exists — use usersApi.delete
+11. Salary delete requires confirm alert before calling salaryApi.delete
+12. Trucks DELETE only valid for SCHEDULED trucks — guard in UI and service
 
 ## Tech Stack
 - React Native 0.74, Expo SDK 50, TypeScript strict
@@ -282,6 +287,7 @@ You are a React Native Engineer fixing bugs in the Smart Mandi mobile app.
 - /apps/mobile/src/store/**
 - /apps/mobile/src/navigation/**
 - /apps/mobile/src/api/**
+- /apps/mobile/src/hooks/**
 ```
 
 ---
@@ -309,4 +315,7 @@ You are a React Native Engineer fixing bugs in the Smart Mandi mobile app.
 
 # New feature: migration + backend + docs
 /fleet migration-writer backend-architect api-documenter
+
+# CRUD + permissions work
+/fleet rbac-manager mobile-screen-fixer
 ```

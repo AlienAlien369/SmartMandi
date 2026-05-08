@@ -14,6 +14,7 @@ export interface User {
   firm_id: string;
   phone: string;
   name: string;
+  firm_name: string;
   role: UserRole;
   is_active: boolean;
 }
@@ -26,6 +27,7 @@ export interface AuthState {
   isSuperAdmin: boolean;
   saToken: string | null;
   accessibleModuleIds: string[];
+  permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }>;
 }
 
 export interface Truck {
@@ -95,7 +97,10 @@ export interface Customer {
   name: string;
   phone?: string;
   village?: string;
+  address?: string;
   is_active: boolean;
+  outstanding_udhar?: number;
+  kc_count?: number;
 }
 
 export interface LedgerEntry {
@@ -179,6 +184,7 @@ export type CustomerStackParamList = {
   CustomerList: undefined;
   CustomerDetail: { customerId: string };
   CustomerCreate: undefined;
+  CustomerEdit: { customerId: string; name: string; phone?: string; address?: string };
 };
 
 export type MoreStackParamList = {

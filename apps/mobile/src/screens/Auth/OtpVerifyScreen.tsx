@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, Alert,
+  KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, RouteProp } from '@react-navigation/native-stack';
@@ -10,6 +10,8 @@ import type { AuthStackParamList } from '../../types';
 import type { AppDispatch, RootState } from '../../store';
 import { login } from '../../store/slices/authSlice';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
+import { Input } from '../../components/ui';
+import { Button } from '../../components/ui';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'OtpVerify'>;
 type RouteT = RouteProp<AuthStackParamList, 'OtpVerify'>;
@@ -57,25 +59,22 @@ export function OtpVerifyScreen() {
         </View>
 
         <View style={styles.card}>
-          <TextInput
-            style={styles.otpInput}
+          <Input
             placeholder="• • • • • •"
-            placeholderTextColor={colors.textTertiary}
             value={otp}
             onChangeText={setOtp}
             keyboardType="number-pad"
             maxLength={6}
             textAlign="center"
             autoFocus
+            style={styles.otpInput}
           />
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
+          <Button
+            label={isLoading ? 'Verifying...' : 'Verify & Login'}
             onPress={handleVerify}
-            disabled={isLoading}
-          >
-            <Text style={styles.buttonText}>{isLoading ? 'Verifying...' : 'Verify & Login'}</Text>
-          </TouchableOpacity>
+            loading={isLoading}
+          />
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -83,7 +82,7 @@ export function OtpVerifyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   inner: { flex: 1, padding: spacing[5], justifyContent: 'center' },
   backBtn: { position: 'absolute', top: spacing[6], left: spacing[5] },
   backText: { color: colors.primary, fontSize: typography.size.base, fontWeight: typography.weight.medium },
@@ -96,23 +95,13 @@ const styles = StyleSheet.create({
     fontSize: typography.size.base, color: colors.textSecondary,
     textAlign: 'center', marginTop: spacing[2], lineHeight: 22,
   },
-  hint: { color: colors.textTertiary, fontSize: typography.size.sm },
+  hint: { color: colors.textMuted, fontSize: typography.size.sm },
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.xl,
-    padding: spacing[6], ...shadow.md,
+    backgroundColor: colors.surfaceRaised, borderRadius: radius.xl,
+    padding: spacing[6], borderWidth: 0.5, borderColor: colors.border, ...shadow.md,
   },
   otpInput: {
-    borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.md,
-    paddingVertical: spacing[4], fontSize: typography.size['2xl'],
-    letterSpacing: 8, color: colors.textPrimary, marginBottom: spacing[5],
-  },
-  button: {
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    paddingVertical: spacing[4], alignItems: 'center',
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: {
-    color: colors.textInverse, fontSize: typography.size.base,
-    fontWeight: typography.weight.semibold,
+    height: 64, fontSize: typography.size['2xl'],
+    letterSpacing: 8, borderColor: colors.primary,
   },
 });

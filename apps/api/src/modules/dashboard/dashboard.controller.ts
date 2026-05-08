@@ -20,9 +20,19 @@ export class DashboardController {
   constructor(private readonly service: DashboardService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get dashboard metrics (precomputed, refreshed every 60s)' })
-  @ApiQuery({ name: 'date', required: false, example: '2025-01-15' })
-  getDashboard(@CurrentFirmId() firmId: string, @Query('date') date?: string) {
+  @ApiOperation({ summary: 'Get dashboard metrics — single date (cached) or date range (live)' })
+  @ApiQuery({ name: 'date', required: false })
+  @ApiQuery({ name: 'date_from', required: false })
+  @ApiQuery({ name: 'date_to', required: false })
+  getDashboard(
+    @CurrentFirmId() firmId: string,
+    @Query('date') date?: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
+  ) {
+    if (date_from || date_to) {
+      return this.service.getDashboardRange(firmId, date_from, date_to);
+    }
     return this.service.getDashboard(firmId, date);
   }
 

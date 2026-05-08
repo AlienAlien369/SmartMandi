@@ -10,6 +10,7 @@ import { kcsApi, configApi } from '../../api/endpoints';
 import type { KacchaChittha, KCStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
+import { usePermissions } from '../../hooks/usePermissions';
 
 type RouteT = RouteProp<KCStackParamList, 'KCDetail'>;
 
@@ -18,6 +19,7 @@ interface GradeConfig { id: string; grade_code: string; grade_label: string; }
 export function KCDetailScreen() {
   const { params } = useRoute<RouteT>();
   const queryClient = useQueryClient();
+  const perms = usePermissions('KC');
 
   // Cancel modal state
   const [cancelModal, setCancelModal] = useState(false);
@@ -65,6 +67,7 @@ export function KCDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kc', params.kcId] });
       queryClient.invalidateQueries({ queryKey: ['kcs'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCancelModal(false);
       setCancelReason('');
       Alert.alert('Cancelled', 'KC has been cancelled');
@@ -117,7 +120,7 @@ export function KCDetailScreen() {
   const setEditField = (i: number, key: string, value: string) =>
     setEditItems(prev => prev.map((it, idx) => idx === i ? { ...it, [key]: value } : it));
 
-  if (isLoading) return <ActivityIndicator style={{ flex: 1 }} size="large" color={colors.primary} />;
+  if (isLoading) return <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />;
   if (!kc) return (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyText}>KC not found</Text>
@@ -209,15 +212,15 @@ export function KCDetailScreen() {
                   </View>
                 )}
                 <View style={styles.editRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.flex1}>
                     <Text style={styles.editItemLabel}>Bags</Text>
                     <TextInput style={styles.editInput} value={item.quantity_bags} onChangeText={v => setEditField(i, 'quantity_bags', v)} keyboardType="number-pad" />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.flex1}>
                     <Text style={styles.editItemLabel}>Weight (kg)</Text>
                     <TextInput style={styles.editInput} value={item.total_weight_kg} onChangeText={v => setEditField(i, 'total_weight_kg', v)} keyboardType="decimal-pad" />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.flex1}>
                     <Text style={styles.editItemLabel}>Rate/kg</Text>
                     <TextInput style={styles.editInput} value={item.rate_per_kg} onChangeText={v => setEditField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" />
                   </View>
@@ -250,23 +253,27 @@ export function KCDetailScreen() {
         {/* Actions */}
         {kc.status === 'DRAFT' && !editMode && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.authorizeBtn}
-              onPress={handleAuthorize}
-              disabled={authorizeMutation.isPending}
-            >
-              <Text style={styles.btnText}>{authorizeMutation.isPending ? 'Processing...' : '✅ Authorize KC'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelKcBtn} onPress={() => setCancelModal(true)} disabled={cancelMutation.isPending}>
-              <Text style={styles.cancelKcBtnText}>Cancel KC</Text>
-            </TouchableOpacity>
+            {perms.can_update && (
+              <TouchableOpacity
+                style={styles.authorizeBtn}
+                onPress={handleAuthorize}
+                disabled={authorizeMutation.isPending}
+              >
+                <Text style={styles.btnText}>{authorizeMutation.isPending ? 'Processing...' : '✅ Authorize KC'}</Text>
+              </TouchableOpacity>
+            )}
+            {perms.can_delete && (
+              <TouchableOpacity style={styles.cancelKcBtn} onPress={() => setCancelModal(true)} disabled={cancelMutation.isPending}>
+                <Text style={styles.cancelKcBtnText}>Cancel KC</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>
 
       {/* Cancel Modal */}
       <Modal visible={cancelModal} transparent animationType="slide" onRequestClose={() => setCancelModal(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>Cancel KC?</Text>
@@ -316,23 +323,23 @@ function AmountRow({ label, value, color, bold }: { label: string; value: string
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing[4], gap: spacing[4], paddingBottom: spacing[10] },
-  header: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], borderLeftWidth: 4, ...shadow.sm },
+  header: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[5], borderLeftWidth: 4, borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   kcNumber: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, color: colors.textPrimary },
   badge: { alignSelf: 'flex-start', paddingHorizontal: spacing[2], paddingVertical: 2, borderRadius: radius.sm, marginTop: spacing[1] },
   badgeText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
   dateText: { color: colors.textSecondary, marginTop: spacing[1] },
-  amountsCard: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], ...shadow.sm },
-  amountRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing[2] },
+  amountsCard: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[5], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
+  amountRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing[2], minHeight: 44, alignItems: 'center' },
   amountLabel: { color: colors.textSecondary },
-  amountValue: { color: colors.textPrimary },
-  divider: { height: 1, backgroundColor: colors.divider, marginVertical: spacing[1] },
-  section: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], ...shadow.sm },
+  amountValue: { color: colors.textPrimary, fontWeight: typography.weight.semibold },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing[1] },
+  section: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[5], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[3] },
-  sectionTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.textSecondary, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
   editBtn: { fontSize: typography.size.sm, color: colors.primary, fontWeight: typography.weight.medium },
-  lineItem: { paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  lineItem: { paddingVertical: spacing[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   lineItemTitle: { fontWeight: typography.weight.medium, color: colors.textPrimary },
   lineItemDetail: { color: colors.textSecondary, fontSize: typography.size.sm },
   lineItemGross: { color: colors.primary, fontWeight: typography.weight.semibold, marginTop: 2 },
@@ -342,33 +349,32 @@ const styles = StyleSheet.create({
   actions: { gap: spacing[3] },
   authorizeBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', ...shadow.md },
   btnText: { color: colors.textInverse, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
-  cancelKcBtn: { borderWidth: 1, borderColor: colors.error, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
-  cancelKcBtnText: { color: colors.error, fontSize: typography.size.base },
+  cancelKcBtn: { borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
+  cancelKcBtnText: { color: colors.danger, fontSize: typography.size.base },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: colors.textSecondary, fontSize: typography.size.lg },
-  // Edit mode
-  editItemCard: { backgroundColor: colors.background, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[2] },
+  editItemCard: { backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[2] },
   editItemLabel: { fontSize: typography.size.xs, color: colors.textSecondary, marginBottom: 4 },
-  editInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: spacing[2], fontSize: typography.size.sm, color: colors.textPrimary },
+  editInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: spacing[2], fontSize: typography.size.sm, color: colors.textPrimary, backgroundColor: colors.surfaceRaised },
   editRow: { flexDirection: 'row', gap: spacing[2], marginTop: spacing[2] },
-  gradePickerBtn: { flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: spacing[2], marginBottom: spacing[1] },
+  gradePickerBtn: { flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: spacing[2], marginBottom: spacing[1], backgroundColor: colors.surfaceRaised },
   gradePickerText: { fontSize: typography.size.sm, color: colors.textPrimary },
-  pickerArrow: { fontSize: typography.size.xs, color: colors.textTertiary },
-  gradeDropdown: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, marginBottom: spacing[2] },
-  gradeOption: { padding: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.divider },
+  pickerArrow: { fontSize: typography.size.xs, color: colors.textMuted },
+  gradeDropdown: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, marginBottom: spacing[2] },
+  gradeOption: { padding: spacing[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   gradeOptionText: { fontSize: typography.size.sm, color: colors.textPrimary },
-  saveBtn: { backgroundColor: colors.success ?? colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center', marginTop: spacing[2] },
+  saveBtn: { backgroundColor: colors.success, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center', marginTop: spacing[2] },
   saveBtnText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
   btnDisabled: { opacity: 0.5 },
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3] },
+  modal: { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3] },
   modalTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.textPrimary },
   modalSubtitle: { fontSize: typography.size.sm, color: colors.textSecondary },
-  modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background, minHeight: 80, textAlignVertical: 'top' },
+  modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.surfaceMuted, minHeight: 80, textAlignVertical: 'top' },
   modalActions: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] },
   modalCancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalCancelText: { color: colors.textSecondary, fontWeight: typography.weight.medium },
-  modalDestructBtn: { flex: 1, backgroundColor: colors.error, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
+  modalDestructBtn: { flex: 1, backgroundColor: colors.danger, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalDestructText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
+  flex1: { flex: 1 },
 });

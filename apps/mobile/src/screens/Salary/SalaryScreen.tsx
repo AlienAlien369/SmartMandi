@@ -7,11 +7,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { salaryApi, usersApi } from '../../api/endpoints';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const PAYMENT_MODES = ['CASH', 'BANK', 'UPI'];
 
 export function SalaryScreen() {
   const queryClient = useQueryClient();
+  const perms = usePermissions('SALARY');
   const [showModal, setShowModal] = useState(false);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
@@ -62,19 +64,37 @@ export function SalaryScreen() {
     onError: (e: any) => Alert.alert('Error', e?.message ?? extractApiError(e)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => salaryApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary'] });
+      Alert.alert('Deleted', 'Salary entry deleted with reversal entries');
+    },
+    onError: (e: any) => Alert.alert('Error', extractApiError(e)),
+  });
+
+  const handleDelete = (id: string) => {
+    Alert.alert('Delete Salary Entry', 'This will write reversal ledger entries. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(id) },
+    ]);
+  };
+
   const entries: any[] = data?.data ?? [];
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Salary Records</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
-          <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
+        {perms.can_create && (
+          <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
+            <Text style={styles.addBtnText}>+ Add</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {isLoading ? (
-        <ActivityIndicator style={{ flex: 1 }} size="large" color={colors.primary} />
+        <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />
       ) : (
         <FlatList
           data={entries}
@@ -84,11 +104,18 @@ export function SalaryScreen() {
           renderItem={({ item }) => (
             <View style={styles.card}>
               <View style={styles.cardRow}>
-                <View>
+                <View style={styles.cardInfo}>
                   <Text style={styles.date}>{new Date(item.salary_date).toLocaleDateString('en-IN')}</Text>
                   <Text style={styles.mode}>{item.notes ?? 'Salary Payment'}</Text>
                 </View>
-                <Text style={styles.amount}>₹{parseFloat(item.amount).toLocaleString('en-IN')}</Text>
+                <View style={styles.cardRight}>
+                  <Text style={styles.amount}>₹{parseFloat(item.amount).toLocaleString('en-IN')}</Text>
+                  {perms.can_delete && (
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
+                      <Text style={styles.deleteBtnText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
           )}
@@ -98,7 +125,7 @@ export function SalaryScreen() {
       {/* Add Modal */}
       <Modal visible={showModal} transparent animationType="slide">
         <View style={styles.overlay}>
-          <ScrollView style={styles.modal} contentContainerStyle={{ gap: spacing[3], paddingBottom: spacing[8] }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.modal} contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.modalTitle}>Record Salary Payment</Text>
 
             {/* Employee Picker */}
@@ -185,33 +212,37 @@ export function SalaryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing[5], backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing[5], backgroundColor: colors.surfaceRaised, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   title: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, color: colors.textPrimary },
   addBtn: { backgroundColor: colors.primary, paddingHorizontal: spacing[4], paddingVertical: spacing[2], borderRadius: radius.md },
   addBtnText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
   list: { padding: spacing[4], gap: spacing[3] },
-  card: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[4], ...shadow.sm },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[4], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  cardInfo: { flex: 1 },
+  cardRight: { alignItems: 'flex-end', gap: spacing[1] },
   date: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: colors.textPrimary },
-  mode: { fontSize: typography.size.sm, color: colors.textTertiary, marginTop: 2 },
+  mode: { fontSize: typography.size.sm, color: colors.textMuted, marginTop: 2 },
   amount: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.primary },
+  deleteBtn: { backgroundColor: colors.error + '18', borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: 2 },
+  deleteBtnText: { fontSize: typography.size.xs, color: colors.error, fontWeight: typography.weight.bold },
   empty: { textAlign: 'center', color: colors.textSecondary, paddingTop: 60 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], maxHeight: '90%' },
+  modal: { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], maxHeight: '90%' },
   modalTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.textPrimary, marginBottom: spacing[2] },
   label: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background },
-  selectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background, borderRadius: radius.md, padding: spacing[3], borderWidth: 1, borderColor: colors.primary },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.surfaceMuted },
+  selectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing[3], borderWidth: 1, borderColor: colors.primary },
   selectedName: { fontSize: typography.size.base, fontWeight: typography.weight.medium, color: colors.primary },
-  clearBtn: { fontSize: typography.size.sm, color: colors.textTertiary },
-  pickerBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], backgroundColor: colors.background },
-  pickerPlaceholder: { fontSize: typography.size.base, color: colors.textTertiary },
-  arrow: { fontSize: typography.size.sm, color: colors.textTertiary },
-  dropdown: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, maxHeight: 180, overflow: 'hidden' },
-  dropdownItem: { padding: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.divider },
+  clearBtn: { fontSize: typography.size.sm, color: colors.textMuted },
+  pickerBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing[3], backgroundColor: colors.surfaceMuted },
+  pickerPlaceholder: { fontSize: typography.size.base, color: colors.textMuted },
+  arrow: { fontSize: typography.size.sm, color: colors.textMuted },
+  dropdown: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surfaceRaised, maxHeight: 180, overflow: 'hidden' },
+  dropdownItem: { padding: spacing[3], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   dropdownName: { fontSize: typography.size.base, color: colors.textPrimary, fontWeight: typography.weight.medium },
-  dropdownRole: { fontSize: typography.size.xs, color: colors.textTertiary },
+  dropdownRole: { fontSize: typography.size.xs, color: colors.textMuted },
   modeRow: { flexDirection: 'row', gap: spacing[2] },
   modeChip: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing[2], alignItems: 'center' },
   modeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
@@ -223,5 +254,7 @@ const styles = StyleSheet.create({
   submitBtn: { flex: 1, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   submitBtnDisabled: { opacity: 0.5 },
   submitText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
+  flex1: { flex: 1 },
+  modalContent: { gap: spacing[3], paddingBottom: spacing[8] },
 });
 

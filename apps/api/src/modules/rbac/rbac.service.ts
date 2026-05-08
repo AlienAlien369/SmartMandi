@@ -235,6 +235,39 @@ export class RbacService {
     return perm[action];
   }
 
+  // ── Get CRUD permission map for current user ─────────────────────────────────
+
+  async getMyPermissions(
+    firmId: string,
+    role: string,
+  ): Promise<Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }>> {
+    if (role === UserRole.FIRM_HEAD) {
+      const modules = await this.getFirmModules(firmId);
+      const result: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
+      for (const m of modules) {
+        if (m.is_active) {
+          result[m.module_id] = { can_create: true, can_read: true, can_update: true, can_delete: true };
+        }
+      }
+      return result;
+    }
+
+    const perms = await this.permissionRepo.find({
+      where: { firm_id: firmId, role },
+    });
+
+    const result: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
+    for (const p of perms) {
+      result[p.module_id] = {
+        can_create: p.can_create,
+        can_read: p.can_read,
+        can_update: p.can_update,
+        can_delete: p.can_delete,
+      };
+    }
+    return result;
+  }
+
   // ── Get accessible modules for a user ────────────────────────────────────────
 
   async getAccessibleModules(firmId: string, role: string): Promise<Array<ModuleDefinition & { permissions: object }>> {

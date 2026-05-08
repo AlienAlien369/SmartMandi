@@ -11,6 +11,7 @@ import { LedgerModule } from './modules/ledger/ledger.module';
 import { EventStoreModule } from './modules/events/event-store.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RedisModule } from './config/redis.module';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 // Phase 2
 import { ConfiguratorModule } from './modules/config/configurator.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -95,6 +96,8 @@ import { RbacModule } from './modules/rbac/rbac.module';
   providers: [
     // Global rate limiting
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Dynamic RBAC — checks role_module_permissions table per endpoint
+    PermissionsGuard,
   ],
 })
 export class AppModule {}

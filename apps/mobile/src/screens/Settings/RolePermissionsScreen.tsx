@@ -93,7 +93,7 @@ export function RolePermissionsScreen() {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loaderTop} />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.hint}>
@@ -155,10 +155,10 @@ export function RolePermissionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   roleBar: {
     flexDirection: 'row', gap: spacing[2], padding: spacing[4],
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.divider,
+    backgroundColor: colors.surfaceRaised, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
   roleChip: {
     flex: 1, paddingVertical: spacing[2], borderRadius: radius.md,
@@ -166,25 +166,27 @@ const styles = StyleSheet.create({
   },
   roleChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   roleChipText: { fontSize: typography.size.sm, color: colors.textSecondary, fontWeight: typography.weight.medium },
-  roleChipTextActive: { color: '#fff' },
-  hint: { fontSize: typography.size.sm, color: colors.textTertiary, marginBottom: spacing[3] },
-  emptyBox: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing[6], alignItems: 'center', ...shadow.sm },
+  roleChipTextActive: { color: colors.textInverse },
+  hint: { fontSize: typography.size.sm, color: colors.textMuted, marginBottom: spacing[3] },
+  emptyBox: { backgroundColor: colors.surfaceRaised, borderRadius: radius.lg, padding: spacing[6], alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   emptyTitle: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.textPrimary, marginBottom: spacing[2] },
   emptyText: { fontSize: typography.size.sm, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 },
   content: { padding: spacing[4], gap: spacing[3], paddingBottom: spacing[10] },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing[4], ...shadow.sm },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: radius.lg, padding: spacing[4], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   moduleName: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.textPrimary },
   moduleDesc: { fontSize: typography.size.xs, color: colors.textSecondary, marginTop: 2, marginBottom: spacing[3] },
   actionsRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing[2] },
   actionItem: { alignItems: 'center', minWidth: '22%' },
   actionLabel: { fontSize: 10, color: colors.textSecondary, marginBottom: 2 },
   saveBar: {
-    padding: spacing[4], backgroundColor: colors.surface,
-    borderTopWidth: 1, borderTopColor: colors.divider,
+    padding: spacing[4], backgroundColor: colors.surfaceRaised,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
   },
   saveBtn: {
     backgroundColor: colors.primary, borderRadius: radius.md,
     paddingVertical: spacing[4], alignItems: 'center',
   },
-  saveBtnText: { color: '#fff', fontSize: typography.size.base, fontWeight: typography.weight.bold },
+  saveBtnText: { color: colors.textInverse, fontSize: typography.size.base, fontWeight: typography.weight.bold },
+  flex1: { flex: 1 },
+  loaderTop: { marginTop: 40 },
 });

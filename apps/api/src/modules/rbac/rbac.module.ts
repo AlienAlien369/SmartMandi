@@ -8,6 +8,7 @@ import { SuperAdmin } from '../super-admin/super-admin.entity';
 import { ModuleDefinition } from './module-definition.entity';
 import { FirmModuleAccess } from './firm-module-access.entity';
 import { RoleModulePermission } from './role-module-permission.entity';
+import { ConfiguratorModule } from '../config/configurator.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { RoleModulePermission } from './role-module-permission.entity';
         secret: config.get('JWT_SECRET'),
       }),
     }),
+    ConfiguratorModule,
   ],
   controllers: [RbacController, SuperAdminController],
   providers: [RbacService],

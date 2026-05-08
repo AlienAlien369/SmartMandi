@@ -101,7 +101,7 @@
 - [x] SalaryService.create(): writes FIRM_CASH DEBIT + USER_SALARY CREDIT in single transaction
 - [x] Salary events: SALARY_PAID published to SQS
 - [x] User entity: firm_id, phone, name, role, is_active, device_id, last_login_at
-- [x] UsersService: CRUD + soft-deactivate + phone uniqueness per firm
+- [x] UsersService: CRUD + soft-delete (`delete()` method, `is_active = false`, `findAll` filters active-only) + phone uniqueness per firm
 - [x] EventConsumerService:
   - handleKcAuthorized: recomputes dashboard metrics
   - handleKcCancelled: writes 3 reversal ledger entries (customer debit + commission debit + APMC credit)
@@ -217,6 +217,58 @@
 
 ---
 
+## ✅ PHASE 9 — CRUD Completion, Dynamic RBAC & Premium UI (COMPLETE)
+
+### Completed
+
+#### Dynamic RBAC — PermissionsGuard
+- [x] `PermissionsGuard` registered as global provider in AppModule — queries `role_module_permissions` per request
+- [x] `@RequirePermission(module, action)` decorator on every write/delete endpoint
+- [x] FIRM_HEAD bypasses all permission checks (full access by design)
+- [x] `usePermissions(module)` hook on mobile — fetches `/rbac/my-permissions` → `{can_create, can_read, can_update, can_delete}`
+- [x] Mobile UI gates: Add button gated by `can_create`, Edit by `can_update`, Delete by `can_delete` across all screens (Trucks, KCs, Customers, Salary, Users)
+
+#### Full CRUD Completion (Backend)
+- [x] **Trucks DELETE**: `DELETE /trucks/:id` — SCHEDULED trucks only; ARRIVED/CLOSED throw `BadRequestException` (have financial records); audit logged
+- [x] **Salary UPDATE**: `PATCH /salary/:id` — notes-only update (amount is immutable per append-only rules)
+- [x] **Salary DELETE**: `DELETE /salary/:id` — writes FIRM_CASH CREDIT + USER_SALARY DEBIT reversal ledger entries before hard-deleting the salary_entry row; preserves audit trail
+- [x] **Users DELETE**: renamed `deactivate()` → `delete()` — soft-delete (`is_active = false`) to preserve FK integrity; `findAll()` now filters `WHERE is_active = true` so deleted users vanish from list immediately
+
+#### Full CRUD Completion (Mobile)
+- [x] `trucksApi.delete(id)` — calls `DELETE /trucks/:id`
+- [x] `salaryApi.update(id, notes)` — calls `PATCH /salary/:id`
+- [x] `salaryApi.delete(id)` — calls `DELETE /salary/:id`
+- [x] `usersApi.delete(id)` — renamed from `usersApi.deactivate`; calls `DELETE /users/:id`
+- [x] SalaryScreen: delete button (gated by `can_delete`), confirm alert "Delete Salary Entry"
+- [x] UsersScreen: full CRUD — edit modal (pre-filled, phone hidden in edit mode), delete button; alert "Delete Team Member"
+- [x] TrucksScreen: delete tile on SCHEDULED trucks only
+
+#### Super Admin Role Permissions
+- [x] `GET /super-admin/firms/:firmId/role-permissions?admin_token=` — returns all `role_module_permissions` rows for any firm
+- [x] `PUT /super-admin/firms/:firmId/role-permissions/:role?admin_token=` — sets CRUD permissions for a role in a firm; calls existing `bulkSetRolePermissions()`
+- [x] SADashboardScreen: "🔑 Permissions" action tile on each FirmCard; opens Role Permissions modal
+- [x] Role tabs (AUTHORIZER / OPERATOR / VIEWER) with colored dots; color-coded C/R/U/D column headers
+- [x] Permission grid: color-coded checkboxes (C=green, R=blue, U=amber, D=red); alternating row backgrounds
+- [x] Permissions cached across role-tab switches to avoid redundant API calls
+
+#### Premium UI Redesign
+- [x] **SA Dashboard**: Deep navy (`#050d1a`) design system; purple `SA` logo mark header; 3 colored-top stat cards; FirmCard with left accent bar + initials avatar + 5 color-coded action tiles; all modals use unified `sheetContainer/sheetHandle/sheetHeader` design
+- [x] **Dashboard screen**: Date filters (Today / This Week / This Month); premium financial cards
+- [x] **Trucks page**: Premium filter chips matching KC page design; date filter
+- [x] **KC page**: Premium filter chips + date filter (matching trucks); correct data shown per filter
+- [x] **Ledger screen**: Date filter (premium); balance cards redesigned — amount overflow handled, fixed alignment at all balance sizes
+- [x] **App-wide safe-area**: Increased top/bottom padding for curved/full-screen phones with notch + bottom nav bar
+
+#### Firm Name Display
+- [x] After login, firm name from JWT/profile shown in app header and relevant screens
+- [x] Firm name sourced from backend — no hardcoding in mobile
+
+#### Terminology Updates
+- [x] "Deactivate User" → "Delete Team Member" in all alerts, success messages, and API layer
+- [x] Users list no longer shows soft-deleted users (filtered at DB query level)
+
+---
+
 ## SEEDED TEST CREDENTIALS
 
 | Role | Phone | Firm ID | Notes |
@@ -247,6 +299,10 @@
 | accessibleModuleIds flow | Fetched from /rbac/my-modules after login → stored in Redux + AsyncStorage; re-fetched on restoreSession | Always up-to-date without full re-login |
 | API_BASE_URL | Single source of truth in constants.ts | Change one file to update all API calls across the app |
 | Route order in NestJS | GET /:id/history must be registered before GET /:id | Prevents NestJS treating "history" as a UUID param |
+| User delete strategy | Soft-delete (is_active=false) + findAll filter | Hard delete violates FK constraints from salary_entries, ledger_entries, audit_logs, trucks, kcs; soft-delete preserves audit trail while hiding user from all list queries |
+| Salary delete strategy | Write reversal ledger entries, then hard-delete salary_entry row | Ledger is append-only; salary_entry row deletion preserves accounting integrity via reversal entries |
+| Truck delete guard | Only SCHEDULED trucks can be deleted | ARRIVED/CLOSED trucks have financial records (PurchaseEntry, inam ledger); deleting would orphan them |
+| Dynamic RBAC | PermissionsGuard queries role_module_permissions per request | Runtime configurability — FIRM_HEAD and SA can change permissions without redeployment |
 
 ---
 
@@ -282,3 +338,8 @@ When resuming from a new session, read this file first. Key facts:
 8. **Module access is three-tier** — SA assigns modules to firms → FIRM_HEAD assigns CRUD per role → users see permitted tabs only
 9. **accessibleModuleIds in Redux** — drives conditional tab rendering in MainNavigator
 10. **Route order matters in NestJS** — register `GET /:id/history` before `GET /:id`
+11. **User delete = soft delete** — `is_active = false` preserved in DB (FK refs from salary/ledger/audit); `findAll` filters `WHERE is_active = true`
+12. **Salary delete = reversal entries** — FIRM_CASH CREDIT + USER_SALARY DEBIT written before hard-deleting `salary_entry` row
+13. **Truck delete = SCHEDULED only** — cannot delete trucks with financial records (ARRIVED/CLOSED)
+14. **Dynamic RBAC** — `PermissionsGuard` + `@RequirePermission(module, action)` on all write endpoints; FIRM_HEAD bypasses; other roles checked against `role_module_permissions`
+15. **SA can configure role permissions** — `GET/PUT /super-admin/firms/:firmId/role-permissions/:role`

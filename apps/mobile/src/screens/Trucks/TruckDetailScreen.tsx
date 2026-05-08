@@ -45,6 +45,7 @@ export function TruckDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['truck', params.truckId] });
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setArriveModal(false);
       setGateWeight('');
       Alert.alert('Success', 'Truck marked as ARRIVED');
@@ -58,6 +59,7 @@ export function TruckDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['truck', params.truckId] });
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCloseModal(false);
       setActualWeight('');
       setRatePerKg('');
@@ -82,7 +84,11 @@ export function TruckDetailScreen() {
     });
   };
 
-  if (isLoading) return <ActivityIndicator style={{ flex: 1 }} size="large" color={colors.primary} />;
+  if (isLoading) return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
   if (isError || !truck) {
     return (
       <View style={styles.errorContainer}>
@@ -148,7 +154,7 @@ export function TruckDetailScreen() {
 
       {/* Arrive Modal */}
       <Modal visible={arriveModal} transparent animationType="slide" onRequestClose={() => setArriveModal(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>🚛 Mark Truck Arrived</Text>
@@ -181,7 +187,7 @@ export function TruckDetailScreen() {
 
       {/* Close Truck Modal */}
       <Modal visible={closeModal} transparent animationType="slide" onRequestClose={() => setCloseModal(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>✅ Close Truck</Text>
@@ -249,33 +255,34 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing[4], gap: spacing[4], paddingBottom: spacing[8] },
   statusHeader: { borderRadius: radius.xl, padding: spacing[5], alignItems: 'center' },
   statusLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, marginBottom: spacing[1] },
   truckNum: { fontSize: typography.size['2xl'], fontWeight: typography.weight.extrabold, color: colors.textPrimary },
   produceName: { color: colors.textSecondary, marginTop: spacing[1] },
-  card: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], ...shadow.sm },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[5], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing[2] },
   infoLabel: { color: colors.textSecondary, fontSize: typography.size.base },
   infoValue: { color: colors.textPrimary, fontSize: typography.size.base },
   actionBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', ...shadow.md },
   actionBtnText: { color: colors.textInverse, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing[6], gap: spacing[3] },
-  errorText: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.error },
+  errorText: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.danger },
   errorSub: { fontSize: typography.size.sm, color: colors.textSecondary, textAlign: 'center' },
   backBtn: { backgroundColor: colors.primary, paddingHorizontal: spacing[5], paddingVertical: spacing[3], borderRadius: radius.md },
   backBtnText: { color: colors.textInverse, fontWeight: typography.weight.medium },
-  // Modal styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3] },
+  modal: { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3], borderTopWidth: 0.5, borderColor: colors.border },
   modalTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.textPrimary, marginBottom: spacing[1] },
   modalLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary },
-  modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background },
+  modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.surfaceMuted },
   modalActions: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] },
   modalCancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalCancelText: { color: colors.textSecondary, fontWeight: typography.weight.medium },
   modalSubmitBtn: { flex: 1, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalSubmitText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
   btnDisabled: { opacity: 0.5 },
+  flex1: { flex: 1 },
 });

@@ -17,7 +17,7 @@ interface LineItemForm {
   grade_config_id: string;
   grade_label: string;
   quantity_bags: string;
-  total_weight_kg: string;
+  weight_per_bag_kg: string;  // user input — weight of one bag
   rate_per_kg: string;
   baardana_source: 'FIRM' | 'CUSTOMER';
   baardana_quantity: string;
@@ -128,9 +128,10 @@ export function KCCreateScreen() {
   // Estimated udhar = gross_estimate - cash - upi
   const estimatedGross = useMemo(() => {
     return lineItems.reduce((sum, it) => {
-      const w = parseFloat(it.total_weight_kg) || 0;
+      const bags = parseFloat(it.quantity_bags) || 0;
+      const wpb = parseFloat(it.weight_per_bag_kg) || 0;
       const r = parseFloat(it.rate_per_kg) || 0;
-      return sum + w * r;
+      return sum + (bags * wpb) * r;
     }, 0);
   }, [lineItems]);
 
@@ -166,7 +167,7 @@ export function KCCreateScreen() {
       grade_config_id: grades[0].id,
       grade_label: grades[0].grade_label,
       quantity_bags: '',
-      total_weight_kg: '',
+      weight_per_bag_kg: '',
       rate_per_kg: '',
       baardana_source: 'FIRM',
       baardana_quantity: '0',
@@ -190,22 +191,28 @@ export function KCCreateScreen() {
       if (!customerId.trim()) throw new Error('Please select a customer');
       if (lineItems.length === 0) throw new Error('Add at least one line item');
       for (const it of lineItems) {
-        if (!it.total_weight_kg || !it.rate_per_kg) throw new Error('Fill weight and rate for all items');
+        if (!it.weight_per_bag_kg || !it.rate_per_kg) throw new Error('Fill weight per bag and rate for all items');
+        if (!it.quantity_bags) throw new Error('Fill bag count for all items');
       }
 
       const idempKey = `kc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const payload = {
         customer_id: customerId,
         sale_date: saleDate,
-        line_items: lineItems.map((li, idx) => ({
-          grade_config_id: li.grade_config_id,
-          quantity_bags: parseInt(li.quantity_bags, 10) || 1,
-          total_weight_kg: parseFloat(li.total_weight_kg) || 0,
-          rate_per_kg: parseFloat(li.rate_per_kg) || 0,
-          baardana_source: li.baardana_source,
-          baardana_quantity: parseInt(li.baardana_quantity, 10) || 0,
-          sort_order: idx,
-        })),
+        line_items: lineItems.map((li, idx) => {
+          const bags = parseInt(li.quantity_bags, 10) || 1;
+          const wpb = parseFloat(li.weight_per_bag_kg) || 0;
+          return {
+            grade_config_id: li.grade_config_id,
+            quantity_bags: bags,
+            weight_per_bag_kg: wpb,
+            total_weight_kg: parseFloat((bags * wpb).toFixed(3)),
+            rate_per_kg: parseFloat(li.rate_per_kg) || 0,
+            baardana_source: li.baardana_source,
+            baardana_quantity: parseInt(li.baardana_quantity, 10) || 0,
+            sort_order: idx,
+          };
+        }),
         idempotency_key: idempKey,
         ...(truckId.trim() ? { truck_id: truckId.trim() } : {}),
       };
@@ -265,7 +272,7 @@ export function KCCreateScreen() {
 
   return (
     <>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
           {/* ── Header card ─────────────────────────────────────── */}
@@ -276,7 +283,7 @@ export function KCCreateScreen() {
             <Text style={styles.fieldLabel}>Customer * (search by name/phone)</Text>
             {customerId ? (
               <View style={styles.selectedCustomer}>
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.selectedCustomerName}>{customerName}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setCustomerId(''); setCustomerName(''); setCustomerSearch(''); }}>
@@ -339,7 +346,7 @@ export function KCCreateScreen() {
             <Text style={styles.fieldLabel}>Truck (optional — ARRIVED/SCHEDULED)</Text>
             {truckId ? (
               <View style={styles.selectedCustomer}>
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.selectedCustomerName}>{truckLabel}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setTruckId(''); setTruckLabel(''); setTruckSearch(''); }}>
@@ -408,7 +415,16 @@ export function KCCreateScreen() {
               )}
 
               <FormField label="Bags *" value={item.quantity_bags} onChangeText={v => setItemField(i, 'quantity_bags', v)} keyboardType="number-pad" placeholder="Number of bags" />
-              <FormField label="Total Weight (kg) *" value={item.total_weight_kg} onChangeText={v => setItemField(i, 'total_weight_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 1500.5" />
+              <FormField label="Weight per Bag (kg) *" value={item.weight_per_bag_kg} onChangeText={v => setItemField(i, 'weight_per_bag_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 50.5" />
+              {/* Auto-calculated total weight */}
+              {!!item.quantity_bags && !!item.weight_per_bag_kg && (
+                <View style={styles.calcRow}>
+                  <Text style={styles.calcLabel}>Total Weight</Text>
+                  <Text style={styles.calcValue}>
+                    {((parseFloat(item.quantity_bags) || 0) * (parseFloat(item.weight_per_bag_kg) || 0)).toFixed(2)} kg
+                  </Text>
+                </View>
+              )}
               <FormField label="Rate per kg (₹) *" value={item.rate_per_kg} onChangeText={v => setItemField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 25.50" />
 
               <Text style={styles.fieldLabel}>Baardana Provided By</Text>
@@ -469,7 +485,7 @@ export function KCCreateScreen() {
 
       {/* ── Add New Customer Modal ───────────────────────────── */}
       <Modal visible={addCustModal} transparent animationType="slide" onRequestClose={() => setAddCustModal(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>Add New Customer</Text>
@@ -526,44 +542,50 @@ export function KCCreateScreen() {
 
 function FormField({ label, ...props }: { label: string } & any) {
   return (
-    <View style={{ marginBottom: spacing[3] }}>
-      <Text style={{ fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing[1] }}>{label}</Text>
+    <View style={fieldStyles.wrapper}>
+      <Text style={fieldStyles.label}>{label}</Text>
       <TextInput
-        style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background }}
-        placeholderTextColor={colors.textTertiary}
+        style={fieldStyles.input}
+        placeholderTextColor={colors.textMuted}
         {...props}
       />
     </View>
   );
 }
 
+const fieldStyles = StyleSheet.create({
+  wrapper: { marginBottom: spacing[3] },
+  label: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing[1] },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.surfaceMuted },
+});
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing[5], gap: spacing[4], paddingBottom: spacing[10] },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing[3] },
   loadingText: { color: colors.textSecondary },
-  card: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], ...shadow.sm },
-  sectionTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.textSecondary, marginBottom: spacing[4], textTransform: 'uppercase', letterSpacing: 0.5 },
+  card: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[5], borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
+  sectionTitle: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.textMuted, marginBottom: spacing[4], textTransform: 'uppercase', letterSpacing: 0.6 },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  removeBtn: { fontSize: typography.size.sm, color: colors.error, fontWeight: typography.weight.medium },
+  removeBtn: { fontSize: typography.size.sm, color: colors.danger, fontWeight: typography.weight.medium },
   fieldLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing[1] },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background, marginBottom: spacing[3] },
-  selectedCustomer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primaryLight ?? colors.background, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3], borderWidth: 1, borderColor: colors.primary },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.surfaceMuted, marginBottom: spacing[3] },
+  selectedCustomer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primaryLight, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3], borderWidth: 1, borderColor: colors.primary },
   selectedCustomerName: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: colors.primary },
   clearBtn: { fontSize: typography.size.sm, color: colors.textSecondary },
-  dropdownList: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: spacing[3], maxHeight: 220, overflow: 'hidden', ...shadow.md },
-  dropdownItem: { padding: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.divider },
+  dropdownList: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, marginBottom: spacing[3], maxHeight: 220, overflow: 'hidden', ...shadow.md },
+  dropdownItem: { padding: spacing[3], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   dropdownItemText: { fontSize: typography.size.base, color: colors.textPrimary, fontWeight: typography.weight.medium },
-  dropdownItemSub: { fontSize: typography.size.xs, color: colors.textTertiary, marginTop: 2 },
+  dropdownItemSub: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: 2 },
   noResultRow: { padding: spacing[3] },
   noResultText: { color: colors.textSecondary, marginBottom: spacing[2] },
   addCustBtn: { backgroundColor: colors.primary, borderRadius: radius.sm, paddingVertical: spacing[2], paddingHorizontal: spacing[3], alignSelf: 'flex-start' },
   addCustBtnText: { color: colors.textInverse, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
-  addCustInlineBtn: { padding: spacing[3], backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border },
+  addCustInlineBtn: { padding: spacing[3], backgroundColor: colors.surfaceMuted, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   addCustInlineBtnText: { color: colors.primary, fontWeight: typography.weight.semibold, textAlign: 'center' },
-  pickerBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], backgroundColor: colors.background, marginBottom: spacing[3] },
+  pickerBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], backgroundColor: colors.surfaceMuted, marginBottom: spacing[3] },
   pickerBtnText: { fontSize: typography.size.base, color: colors.textPrimary, flex: 1 },
-  pickerArrow: { fontSize: typography.size.sm, color: colors.textTertiary },
+  pickerArrow: { fontSize: typography.size.sm, color: colors.textMuted },
   modeRow: { flexDirection: 'row', gap: spacing[2], marginBottom: spacing[3] },
   modeChip: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing[2], alignItems: 'center' },
   modeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
@@ -572,20 +594,23 @@ const styles = StyleSheet.create({
   addItemBtn: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center', borderStyle: 'dashed' },
   addItemText: { color: colors.primary, fontWeight: typography.weight.medium },
   estimateRow: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing[3] },
-  udharRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3] },
+  calcRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radius.sm, paddingHorizontal: spacing[3], paddingVertical: spacing[2], marginBottom: spacing[3] },
+  calcLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
+  calcValue: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.primary },
+  udharRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3] },
   udharLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
   udharAmount: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.warning },
   paymentWarning: { fontSize: typography.size.xs, color: colors.warning, marginTop: spacing[1] },
   submitBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', ...shadow.md },
   btnDisabled: { opacity: 0.5 },
   submitText: { color: colors.textInverse, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3] },
+  modal: { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], gap: spacing[3] },
   modalTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.textPrimary, marginBottom: spacing[2] },
   modalActions: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] },
   modalCancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalCancelText: { color: colors.textSecondary, fontWeight: typography.weight.medium },
   modalSubmitBtn: { flex: 1, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalSubmitText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
+  flex1: { flex: 1 },
 });

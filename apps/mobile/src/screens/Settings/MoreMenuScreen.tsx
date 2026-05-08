@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AppDispatch, RootState } from '../../store';
 import { logout } from '../../store/slices/authSlice';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
@@ -23,6 +24,7 @@ export function MoreMenuScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
   const accessibleModuleIds = useSelector((s: RootState) => s.auth.accessibleModuleIds);
+  const insets = useSafeAreaInsets();
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure?', [
@@ -37,15 +39,19 @@ export function MoreMenuScreen() {
   });
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing[5] }]}
+    >
       {/* Profile */}
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{user?.name?.charAt(0) ?? '?'}</Text>
         </View>
-        <View>
-          <Text style={styles.userName}>{user?.name}</Text>
-          <Text style={styles.userRole}>{user?.role}</Text>
+        <View style={styles.profileText}>
+          <Text style={styles.userName} numberOfLines={1}>{user?.name}</Text>
+          <Text style={styles.userFirmName} numberOfLines={1}>{user?.firm_name ?? ''}</Text>
+          <Text style={styles.userRole}>{user?.role?.replace('_', ' ')}</Text>
           <Text style={styles.userPhone}>{user?.phone}</Text>
         </View>
       </View>
@@ -81,33 +87,37 @@ export function MoreMenuScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing[5], gap: spacing[4], paddingBottom: spacing[10] },
+  container: { flex: 1, backgroundColor: colors.surface },
+  content: { paddingHorizontal: spacing[5], paddingBottom: spacing[10], gap: spacing[4] },
   profileCard: {
     backgroundColor: colors.primary, borderRadius: radius.xl,
     padding: spacing[5], flexDirection: 'row', alignItems: 'center', gap: spacing[4],
+    shadowColor: '#1A1A18', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18, shadowRadius: 8, elevation: 8,
   },
   avatar: {
     width: 52, height: 52, borderRadius: 26,
     backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center',
   },
   avatarText: { color: colors.textInverse, fontSize: typography.size.xl, fontWeight: typography.weight.bold },
+  profileText: { flex: 1, minWidth: 0 },
   userName: { color: colors.textInverse, fontSize: typography.size.lg, fontWeight: typography.weight.bold },
-  userRole: { color: 'rgba(255,255,255,0.8)', fontSize: typography.size.sm, marginTop: 2 },
+  userFirmName: { color: 'rgba(255,255,255,0.9)', fontSize: typography.size.sm, fontWeight: typography.weight.semibold, marginTop: 1 },
+  userRole: { color: 'rgba(255,255,255,0.7)', fontSize: typography.size.xs, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
   userPhone: { color: 'rgba(255,255,255,0.7)', fontSize: typography.size.sm },
-  menuCard: { backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden', ...shadow.sm },
+  menuCard: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: spacing[4], gap: spacing[3] },
   menuIcon: { fontSize: 20, width: 28 },
   menuLabel: { flex: 1, fontSize: typography.size.base, color: colors.textPrimary, fontWeight: typography.weight.medium },
-  menuArrow: { fontSize: 20, color: colors.textTertiary },
-  divider: { height: 1, backgroundColor: colors.divider, marginLeft: spacing[4] + 28 + spacing[3] },
+  menuArrow: { fontSize: 20, color: colors.textMuted },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: spacing[4] + 28 + spacing[3] },
   logoutBtn: {
-    borderWidth: 1, borderColor: colors.error, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md,
     paddingVertical: spacing[4], alignItems: 'center',
   },
-  logoutText: { color: colors.error, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
-  version: { textAlign: 'center', color: colors.textTertiary, fontSize: typography.size.xs },
+  logoutText: { color: colors.danger, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
+  version: { textAlign: 'center', color: colors.textMuted, fontSize: typography.size.xs },
   emptyState: { padding: spacing[6], alignItems: 'center' },
   emptyText: { color: colors.textSecondary, fontSize: typography.size.base, textAlign: 'center' },
-  emptySubText: { color: colors.textTertiary, fontSize: typography.size.sm, marginTop: spacing[2], textAlign: 'center' },
+  emptySubText: { color: colors.textMuted, fontSize: typography.size.sm, marginTop: spacing[2], textAlign: 'center' },
 });

@@ -53,43 +53,77 @@ export class ReportsService {
     const page = Math.max(1, Number(options.page || 1));
     const limit = Math.min(Math.max(1, Number(options.limit || 50)), 200);
 
-    const qb = this.ledgerRepo
+    // Fetch ALL entries for this ledger type (no date filter here — date filter applies to page window only)
+    const allQb = this.ledgerRepo
       .createQueryBuilder('le')
       .where('le.firm_id = :firmId', { firmId })
       .andWhere('le.ledger_type = :type', { type: options.ledger_type })
       .orderBy('le.created_at', 'ASC');
 
-    if (options.customer_id) qb.andWhere('le.customer_id = :cid', { cid: options.customer_id });
-    if (options.truck_id) qb.andWhere('le.truck_id = :tid', { tid: options.truck_id });
-    if (options.user_id) qb.andWhere('le.user_id = :uid', { uid: options.user_id });
-    if (options.from) qb.andWhere('le.created_at >= :from', { from: options.from });
-    if (options.to) qb.andWhere('le.created_at <= :to', { to: options.to });
+    if (options.customer_id) allQb.andWhere('le.customer_id = :cid', { cid: options.customer_id });
+    if (options.truck_id) allQb.andWhere('le.truck_id = :tid', { tid: options.truck_id });
+    if (options.user_id) allQb.andWhere('le.user_id = :uid', { uid: options.user_id });
 
-    const allEntries = await qb.getMany();
-    const total = allEntries.length;
+    // For date filter: fetch all entries without date range first (to compute correct running balance),
+    // then apply date filter to determine the page window
+    const allEntries = await allQb.getMany();
+
+    // Build a map of computed running balance for every entry
+    let running = new Decimal(0);
+    const balanceMap = new Map<string, string>();
+    for (const e of allEntries) {
+      running = e.entry_type === EntryType.CREDIT
+        ? running.plus(new Decimal(e.amount))
+        : running.minus(new Decimal(e.amount));
+      balanceMap.set(e.id, running.toFixed(2));
+    }
+
+    // Apply date filter to the window that will be paged
+    let filteredEntries = allEntries;
+    if (options.from || options.to) {
+      filteredEntries = allEntries.filter(e => {
+        const d = new Date(e.created_at);
+        if (options.from && d < new Date(options.from)) return false;
+        if (options.to) {
+          const toEnd = new Date(options.to);
+          toEnd.setHours(23, 59, 59, 999);
+          if (d > toEnd) return false;
+        }
+        return true;
+      });
+    }
+
+    const total = filteredEntries.length;
+    const start = (page - 1) * limit;
+    const pageEntries = filteredEntries.slice(start, start + limit);
+
+    // Opening balance = balance just before first entry on this page
+    const firstOnPage = pageEntries[0];
+    let openingBalance = new Decimal(0);
+    if (firstOnPage) {
+      const idxInAll = allEntries.findIndex(e => e.id === firstOnPage.id);
+      if (idxInAll > 0) {
+        openingBalance = new Decimal(balanceMap.get(allEntries[idxInAll - 1].id) ?? '0');
+      }
+    }
 
     let totalCredits = new Decimal(0);
     let totalDebits = new Decimal(0);
-    let openingBalance = new Decimal(0);
 
-    // Compute opening balance before page window
-    const start = (page - 1) * limit;
-    for (let i = 0; i < start && i < allEntries.length; i++) {
-      const e = allEntries[i];
-      if (e.entry_type === EntryType.CREDIT) openingBalance = openingBalance.plus(new Decimal(e.amount));
-      else openingBalance = openingBalance.minus(new Decimal(e.amount));
-    }
-
-    const pageEntries = allEntries.slice(start, start + limit);
-    for (const e of pageEntries) {
+    // Inject computed balance_after into each page entry (overrides stored 0.00)
+    const enriched = pageEntries.map(e => {
+      const computed = balanceMap.get(e.id) ?? '0.00';
       if (e.entry_type === EntryType.CREDIT) totalCredits = totalCredits.plus(new Decimal(e.amount));
       else totalDebits = totalDebits.plus(new Decimal(e.amount));
-    }
+      return { ...e, balance_after: computed };
+    });
 
-    const closingBalance = openingBalance.plus(totalCredits).minus(totalDebits);
+    const closingBalance = enriched.length > 0
+      ? new Decimal(enriched[enriched.length - 1].balance_after)
+      : openingBalance;
 
     return {
-      entries: pageEntries,
+      entries: enriched as any,
       opening_balance: openingBalance.toFixed(2),
       closing_balance: closingBalance.toFixed(2),
       total_credits: totalCredits.toFixed(2),
@@ -141,58 +175,91 @@ export class ReportsService {
     });
   }
 
-  /** Generate CSV for KC list */
-  async exportKcsCsv(firmId: string, date: string): Promise<string> {
+  /** Generate CSV for KC list — supports single date or date range */
+  async exportKcsCsv(firmId: string, dateFrom: string, dateTo: string): Promise<string> {
+    const dateCondition = dateFrom === dateTo
+      ? `kc.sale_date = '${dateFrom}'`
+      : `kc.sale_date BETWEEN '${dateFrom}' AND '${dateTo}'`;
+
     const kcs = await this.kcRepo
       .createQueryBuilder('kc')
       .leftJoinAndSelect('kc.line_items', 'li')
       .where('kc.firm_id = :firmId', { firmId })
-      .andWhere('kc.sale_date = :date', { date })
       .andWhere('kc.status = :status', { status: KCStatus.AUTHORIZED })
-      .orderBy('kc.kc_number', 'ASC')
+      .andWhere(dateCondition)
+      .orderBy('kc.sale_date', 'ASC')
+      .addOrderBy('kc.kc_number', 'ASC')
       .getMany();
 
-    const header = 'KC Number,Customer,Truck,Gross,Commission,APMC Fee,Net Payable,Baardana,Date';
-    const rows = kcs.map(kc =>
-      [
-        kc.kc_number,
-        kc.customer_id,
-        kc.truck_id ?? '',
-        kc.total_gross_amount,
-        kc.total_commission,
-        kc.total_apmc_fee,
-        kc.total_net_payable,
-        kc.total_baardana_cost,
-        kc.sale_date,
-      ].join(','),
-    );
+    // Fetch customer and truck names in bulk to avoid N+1
+    const customerIds = [...new Set(kcs.map(k => k.customer_id).filter(Boolean))];
+    const truckIds    = [...new Set(kcs.map(k => k.truck_id).filter(Boolean))];
+
+    const customerMap = new Map<string, string>();
+    const truckMap    = new Map<string, string>();
+
+    if (customerIds.length > 0) {
+      const rows: Array<{ id: string; name: string }> = await this.kcRepo.manager.query(
+        `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
+        [customerIds],
+      );
+      rows.forEach(r => customerMap.set(r.id, r.name));
+    }
+
+    if (truckIds.length > 0) {
+      const rows: Array<{ id: string; truck_number: string }> = await this.kcRepo.manager.query(
+        `SELECT id, truck_number FROM trucks WHERE id = ANY($1::uuid[])`,
+        [truckIds],
+      );
+      rows.forEach(r => truckMap.set(r.id, r.truck_number));
+    }
+
+    const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+    const header = 'KC Number,Sale Date,Customer Name,Truck Number,Gross Amount,Commission,APMC Fee,Baardana,Net Payable';
+    const rows = kcs.map(kc => [
+      kc.kc_number,
+      kc.sale_date,
+      customerMap.get(kc.customer_id) ?? kc.customer_id,
+      truckMap.get(kc.truck_id ?? '') ?? kc.truck_id ?? '',
+      kc.total_gross_amount,
+      kc.total_commission,
+      kc.total_apmc_fee,
+      kc.total_baardana_cost,
+      kc.total_net_payable,
+    ].map(escape).join(','));
 
     return [header, ...rows].join('\n');
   }
 
-  async exportTrucksCsv(firmId: string, date: string): Promise<string> {
+  async exportTrucksCsv(firmId: string, dateFrom: string, dateTo: string): Promise<string> {
+    const dateCondition = dateFrom === dateTo
+      ? `t.sale_date = '${dateFrom}'`
+      : `t.sale_date BETWEEN '${dateFrom}' AND '${dateTo}'`;
+
     const trucks = await this.truckRepo
       .createQueryBuilder('t')
       .where('t.firm_id = :firmId', { firmId })
-      .andWhere('t.sale_date = :date', { date })
-      .orderBy('t.created_at', 'ASC')
+      .andWhere(dateCondition)
+      .orderBy('t.sale_date', 'ASC')
+      .addOrderBy('t.created_at', 'ASC')
       .getMany();
 
-    const header = 'Truck Number,Driver,Produce,Status,Estimated Weight,Arrived Weight,Actual Weight,Variance,Inam,Sale Date';
-    const rows = trucks.map(t =>
-      [
-        t.truck_number,
-        t.driver_name,
-        t.produce_name,
-        t.status,
-        t.estimated_weight_kg ?? '',
-        t.arrived_weight_kg ?? '',
-        t.actual_weight_kg ?? '',
-        t.weight_variance_kg ?? '',
-        t.inam_amount,
-        t.sale_date,
-      ].join(','),
-    );
+    const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+    const header = 'Truck Number,Driver,Produce,Status,Est. Weight (kg),Arrived Weight (kg),Actual Weight (kg),Variance (kg),Inam,Sale Date';
+    const rows = trucks.map(t => [
+      t.truck_number,
+      t.driver_name,
+      t.produce_name,
+      t.status,
+      t.estimated_weight_kg ?? '',
+      t.arrived_weight_kg ?? '',
+      t.actual_weight_kg ?? '',
+      t.weight_variance_kg ?? '',
+      t.inam_amount,
+      t.sale_date,
+    ].map(escape).join(','));
 
     return [header, ...rows].join('\n');
   }

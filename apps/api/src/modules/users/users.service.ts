@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { User } from './user.entity';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 
@@ -9,6 +9,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreateUserDto, firmId: string, createdBy: string): Promise<User> {
@@ -23,7 +25,7 @@ export class UsersService {
     const p = Math.max(1, Number(page || 1));
     const l = Math.min(100, Math.max(1, Number(limit || 50)));
     const [data, total] = await this.userRepo.findAndCount({
-      where: { firm_id: firmId },
+      where: { firm_id: firmId, is_active: true },
       order: { created_at: 'DESC' },
       skip: (p - 1) * l,
       take: l,
@@ -47,9 +49,16 @@ export class UsersService {
     return this.userRepo.save(user);
   }
 
-  async deactivate(id: string, firmId: string): Promise<void> {
+  async delete(id: string, firmId: string): Promise<void> {
     const user = await this.findOne(id, firmId);
     user.is_active = false;
     await this.userRepo.save(user);
+  }
+
+  async updateFcmToken(userId: string, fcmToken: string): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE users SET fcm_token = $1 WHERE id = $2`,
+      [fcmToken, userId],
+    );
   }
 }

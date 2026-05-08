@@ -17,9 +17,27 @@ type Firm = {
 };
 type Module = { id: string; label: string; description: string; sort_order: number };
 
-type ActiveModal = 'none' | 'modules' | 'create' | 'edit';
+type ActiveModal = 'none' | 'modules' | 'create' | 'edit' | 'config' | 'permissions';
 
 const EMPTY_FORM = { name: '', apmc_name: '', contact_phone: '', address: '', head_name: '', head_phone: '' };
+
+const CONFIGURABLE_ROLES = ['AUTHORIZER', 'OPERATOR', 'VIEWER'] as const;
+type ConfigurableRole = typeof CONFIGURABLE_ROLES[number];
+
+const FEE_TYPES = ['PERCENTAGE', 'FIXED_PER_KG', 'FIXED_PER_TRANSACTION'] as const;
+const ROUNDING_OPTS = ['ROUND_HALF_UP', 'FLOOR', 'CEIL', 'NONE'] as const;
+
+const EMPTY_CONFIG = {
+  fee_type: 'PERCENTAGE' as string,
+  fee_value: '',
+  min_fee: '',
+  max_fee: '',
+  commission_type: 'PERCENTAGE' as string,
+  commission_value: '',
+  rounding_strategy: 'ROUND_HALF_UP' as string,
+  min_commission: '',
+  max_commission: '',
+};
 
 export function SADashboardScreen() {
   const dispatch = useDispatch<AppDispatch>();
@@ -33,6 +51,17 @@ export function SADashboardScreen() {
   const [loadingModules, setLoadingModules] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const setField = (k: keyof typeof EMPTY_FORM) => (v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  // Config modal state
+  const [configForm, setConfigForm] = useState(EMPTY_CONFIG);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const setConfigField = (k: keyof typeof EMPTY_CONFIG) => (v: string) => setConfigForm(p => ({ ...p, [k]: v }));
+
+  // Permissions modal state
+  const [selectedRole, setSelectedRole] = useState<ConfigurableRole>('AUTHORIZER');
+  const [pendingPerms, setPendingPerms] = useState<Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }>>({});
+  const [loadingPerms, setLoadingPerms] = useState(false);
+  const [permsDirty, setPermsDirty] = useState(false);
 
   const { data: firms = [], isLoading: firmsLoading, refetch: refetchFirms } = useQuery({
     queryKey: ['sa', 'firms'],
@@ -68,7 +97,126 @@ export function SADashboardScreen() {
     setActiveModal('create');
   };
 
+  const openConfig = async (firm: Firm) => {
+    setSelectedFirm(firm);
+    setLoadingConfig(true);
+    setActiveModal('config');
+    try {
+      const [apmcRes, commRes] = await Promise.all([
+        superAdminApi.getApmcFeeConfig(firm.id, saToken),
+        superAdminApi.getCommissionConfig(firm.id, saToken),
+      ]);
+      const apmc = apmcRes.data as any;
+      const comm = commRes.data as any;
+      setConfigForm({
+        fee_type: apmc.fee_type ?? 'PERCENTAGE',
+        fee_value: apmc.fee_value != null ? String(apmc.fee_value) : '',
+        min_fee: apmc.min_fee != null ? String(apmc.min_fee) : '',
+        max_fee: apmc.max_fee != null ? String(apmc.max_fee) : '',
+        commission_type: comm.commission_type ?? 'PERCENTAGE',
+        commission_value: comm.commission_value != null ? String(comm.commission_value) : '',
+        rounding_strategy: comm.rounding_strategy ?? 'ROUND_HALF_UP',
+        min_commission: comm.min_commission != null ? String(comm.min_commission) : '',
+        max_commission: comm.max_commission != null ? String(comm.max_commission) : '',
+      });
+    } catch { setConfigForm(EMPTY_CONFIG); }
+    finally { setLoadingConfig(false); }
+  };
+
   const closeModal = () => { setActiveModal('none'); setSelectedFirm(null); };
+
+  const loadPermsForRole = async (firmId: string, role: string, existingPerms: any[]) => {
+    setLoadingPerms(true);
+    try {
+      // Build a map of existing perms for this role
+      const map: Record<string, any> = {};
+      for (const p of existingPerms) {
+        if (p.role === role) {
+          map[p.module_id] = { can_create: p.can_create, can_read: p.can_read, can_update: p.can_update, can_delete: p.can_delete };
+        }
+      }
+      // Default all modules not in map to read-only
+      for (const mod of allModules) {
+        if (!map[mod.id]) {
+          map[mod.id] = { can_create: false, can_read: true, can_update: false, can_delete: false };
+        }
+      }
+      setPendingPerms(map);
+    } finally {
+      setLoadingPerms(false);
+    }
+  };
+
+  const openPermissions = async (firm: Firm) => {
+    setSelectedFirm(firm);
+    setSelectedRole('AUTHORIZER');
+    setPermsDirty(false);
+    setActiveModal('permissions');
+    setLoadingPerms(true);
+    try {
+      const res = await superAdminApi.getRolePermissions(firm.id, saToken);
+      const allPerms = res.data as any[];
+      await loadPermsForRole(firm.id, 'AUTHORIZER', allPerms);
+      // Cache all perms for role switching
+      (openPermissions as any)._allPerms = allPerms;
+    } catch {
+      setPendingPerms({});
+      setLoadingPerms(false);
+    }
+  };
+
+  const handleRoleSwitch = async (role: ConfigurableRole) => {
+    setSelectedRole(role);
+    setPermsDirty(false);
+    const allPerms = (openPermissions as any)._allPerms ?? [];
+    await loadPermsForRole(selectedFirm!.id, role, allPerms);
+  };
+
+  const togglePerm = (moduleId: string, field: 'can_create' | 'can_read' | 'can_update' | 'can_delete') => {
+    setPendingPerms(prev => ({
+      ...prev,
+      [moduleId]: { ...prev[moduleId], [field]: !prev[moduleId]?.[field] },
+    }));
+    setPermsDirty(true);
+  };
+
+  const savePermsMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFirm) return;
+      const permissions = Object.entries(pendingPerms).map(([module_id, p]) => ({ module_id, ...p }));
+      await superAdminApi.setRolePermissions(selectedFirm.id, selectedRole, permissions, saToken);
+      // Refresh cached perms
+      const res = await superAdminApi.getRolePermissions(selectedFirm.id, saToken);
+      (openPermissions as any)._allPerms = res.data;
+    },
+    onSuccess: () => { setPermsDirty(false); Alert.alert('Saved ✅', `${selectedRole} permissions updated for ${selectedFirm?.name}`); },
+    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to save permissions'),
+  });
+
+  const saveConfigMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFirm) return;
+      if (!configForm.fee_value) throw new Error('APMC fee value is required');
+      if (!configForm.commission_value) throw new Error('Commission value is required');
+      await Promise.all([
+        superAdminApi.setApmcFeeConfig(selectedFirm.id, {
+          fee_type: configForm.fee_type,
+          fee_value: parseFloat(configForm.fee_value),
+          min_fee: configForm.min_fee ? parseFloat(configForm.min_fee) : null,
+          max_fee: configForm.max_fee ? parseFloat(configForm.max_fee) : null,
+        }, saToken),
+        superAdminApi.setCommissionConfig(selectedFirm.id, {
+          commission_type: configForm.commission_type,
+          commission_value: parseFloat(configForm.commission_value),
+          rounding_strategy: configForm.rounding_strategy,
+          min_commission: configForm.min_commission ? parseFloat(configForm.min_commission) : null,
+          max_commission: configForm.max_commission ? parseFloat(configForm.max_commission) : null,
+        }, saToken),
+      ]);
+    },
+    onSuccess: () => { closeModal(); Alert.alert('Saved', 'APMC fee & commission config updated.'); },
+    onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to save config'),
+  });
 
   const saveModulesMutation = useMutation({
     mutationFn: () => superAdminApi.setFirmModules(selectedFirm!.id, Array.from(pendingModules), saToken),
@@ -112,136 +260,380 @@ export function SADashboardScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* ── Premium Header ── */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Super Admin Panel</Text>
-          <Text style={styles.headerSub}>Smart Mandi Platform Management</Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.logoMark}><Text style={styles.logoText}>SA</Text></View>
+          <View>
+            <Text style={styles.headerBrand}>Smart Mandi</Text>
+            <Text style={styles.headerSub}>Platform Command Center</Text>
+          </View>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => Alert.alert('Logout', 'Sign out?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Logout', style: 'destructive', onPress: () => dispatch(logoutSuperAdmin()) }])}>
-          <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={() => Alert.alert('Sign Out', 'Sign out of Super Admin?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign Out', style: 'destructive', onPress: () => dispatch(logoutSuperAdmin()) },
+          ])}
+        >
+          <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsBar}>
-        <View style={styles.statItem}><Text style={styles.statNum}>{activeFirms.length}</Text><Text style={styles.statLabel}>Active Firms</Text></View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}><Text style={styles.statNum}>{firms.reduce((s, f) => s + f.user_count, 0)}</Text><Text style={styles.statLabel}>Total Users</Text></View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}><Text style={styles.statNum}>{allModules.length}</Text><Text style={styles.statLabel}>Modules</Text></View>
+      {/* ── Stats Row ── */}
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { borderTopColor: '#7c3aed' }]}>
+          <Text style={styles.statNum}>{activeFirms.length}</Text>
+          <Text style={styles.statLabel}>Active Firms</Text>
+        </View>
+        <View style={[styles.statCard, { borderTopColor: '#10b981' }]}>
+          <Text style={[styles.statNum, { color: '#10b981' }]}>{firms.reduce((s, f) => s + f.user_count, 0)}</Text>
+          <Text style={styles.statLabel}>Total Users</Text>
+        </View>
+        <View style={[styles.statCard, { borderTopColor: '#3b82f6' }]}>
+          <Text style={[styles.statNum, { color: '#3b82f6' }]}>{allModules.length}</Text>
+          <Text style={styles.statLabel}>Modules</Text>
+        </View>
       </View>
 
-      {/* Add Firm button */}
-      <View style={styles.topRow}>
-        <Text style={styles.sectionTitle}>Registered Firms</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
-          <Text style={styles.addBtnText}>+ New Firm</Text>
+      {/* ── Firms Section Header ── */}
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Registered Firms</Text>
+          <Text style={styles.sectionSub}>{firms.length} total · {inactiveFirms.length} inactive</Text>
+        </View>
+        <TouchableOpacity style={styles.newFirmBtn} onPress={openCreate}>
+          <Text style={styles.newFirmBtnText}>＋  New Firm</Text>
         </TouchableOpacity>
       </View>
 
       {firmsLoading ? (
-        <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 60 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {activeFirms.map(firm => <FirmCard key={firm.id} firm={firm} onModules={() => openModules(firm)} onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)} />)}
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          {activeFirms.map(firm => (
+            <FirmCard key={firm.id} firm={firm}
+              onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
+              onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
+              onPermissions={() => openPermissions(firm)}
+            />
+          ))}
           {inactiveFirms.length > 0 && (
             <>
-              <Text style={styles.inactiveLabel}>Deactivated Firms</Text>
-              {inactiveFirms.map(firm => <FirmCard key={firm.id} firm={firm} onModules={() => openModules(firm)} onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)} inactive />)}
+              <Text style={styles.inactiveLabel}>— Deactivated Firms —</Text>
+              {inactiveFirms.map(firm => (
+                <FirmCard key={firm.id} firm={firm} inactive
+                  onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
+                  onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
+                  onPermissions={() => openPermissions(firm)}
+                />
+              ))}
             </>
           )}
-          {firms.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyText}>No firms yet. Tap "+ New Firm" to get started.</Text></View>}
+          {firms.length === 0 && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🏢</Text>
+              <Text style={styles.emptyTitle}>No Firms Yet</Text>
+              <Text style={styles.emptyText}>Create your first firm to get started.</Text>
+            </View>
+          )}
         </ScrollView>
       )}
 
-      {/* ── Module Modal ── */}
+      {/* ── Module Access Modal ── */}
       <Modal visible={activeModal === 'modules'} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.modal}>
-          <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>Module Access</Text>
-              <Text style={styles.modalSub}>{selectedFirm?.name} · {pendingModules.size} of {allModules.length} enabled</Text>
+        <View style={styles.sheetContainer}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={styles.flex1}>
+              <Text style={styles.sheetTitle}>Module Access</Text>
+              <Text style={styles.sheetSub}>{selectedFirm?.name} · {pendingModules.size}/{allModules.length} enabled</Text>
             </View>
-            <TouchableOpacity onPress={closeModal} style={styles.closeBtn}><Text style={styles.closeText}>✕</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}>
+              <Text style={styles.sheetCloseText}>✕</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.modalHint}>Toggle modules this firm can access.</Text>
+          <Text style={styles.sheetHint}>Toggle which modules this firm can access from their app.</Text>
           {loadingModules ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (
             <ScrollView contentContainerStyle={styles.moduleList}>
-              {allModules.map(mod => (
-                <View key={mod.id} style={[styles.moduleRow, pendingModules.has(mod.id) && styles.moduleRowActive]}>
-                  <View style={styles.moduleInfo}><Text style={styles.moduleName}>{mod.label}</Text><Text style={styles.moduleDesc}>{mod.description}</Text></View>
-                  <Switch value={pendingModules.has(mod.id)} onValueChange={() => { setPendingModules(prev => { const n = new Set(prev); n.has(mod.id) ? n.delete(mod.id) : n.add(mod.id); return n; }); setIsDirty(true); }} trackColor={{ false: '#e2e8f0', true: '#7c3aed' }} thumbColor="#fff" />
-                </View>
-              ))}
+              {allModules.map(mod => {
+                const active = pendingModules.has(mod.id);
+                return (
+                  <TouchableOpacity key={mod.id}
+                    style={[styles.moduleRow, active && styles.moduleRowActive]}
+                    onPress={() => { setPendingModules(prev => { const n = new Set(prev); n.has(mod.id) ? n.delete(mod.id) : n.add(mod.id); return n; }); setIsDirty(true); }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.moduleIcon, active && styles.moduleIconActive]}>
+                      <Text style={styles.moduleIconText}>{mod.label.charAt(0)}</Text>
+                    </View>
+                    <View style={styles.moduleInfo}>
+                      <Text style={[styles.moduleName, active && { color: '#7c3aed' }]}>{mod.label}</Text>
+                      <Text style={styles.moduleDesc}>{mod.description}</Text>
+                    </View>
+                    <Switch value={active}
+                      onValueChange={() => { setPendingModules(prev => { const n = new Set(prev); n.has(mod.id) ? n.delete(mod.id) : n.add(mod.id); return n; }); setIsDirty(true); }}
+                      trackColor={{ false: '#334155', true: '#7c3aed' }} thumbColor="#fff"
+                    />
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           )}
           {isDirty && (
             <View style={styles.saveBar}>
-              <TouchableOpacity style={styles.saveBtn} onPress={() => saveModulesMutation.mutate()} disabled={saveModulesMutation.isPending}>
-                {saveModulesMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Module Access</Text>}
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => saveModulesMutation.mutate()} disabled={saveModulesMutation.isPending}>
+                {saveModulesMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save Module Access</Text>}
               </TouchableOpacity>
             </View>
           )}
         </View>
       </Modal>
 
+      {/* ── Rates & Fees Modal ── */}
+      <Modal visible={activeModal === 'config'} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.sheetContainer}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View style={styles.flex1}>
+                <Text style={styles.sheetTitle}>Rates & Fees</Text>
+                <Text style={styles.sheetSub}>{selectedFirm?.name}</Text>
+              </View>
+              <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}><Text style={styles.sheetCloseText}>✕</Text></TouchableOpacity>
+            </View>
+            {loadingConfig ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (
+              <ScrollView contentContainerStyle={styles.formScroll}>
+                <View style={styles.configSection}>
+                  <View style={styles.configSectionHeader}>
+                    <Text style={styles.configSectionIcon}>🏛️</Text>
+                    <View>
+                      <Text style={styles.configSectionTitle}>APMC Fee</Text>
+                      <Text style={styles.configHint}>Applied to every authorized KC</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldLabel}>Fee Type</Text>
+                  <View style={styles.chipRow}>
+                    {FEE_TYPES.map(t => (
+                      <TouchableOpacity key={t} style={[styles.chip, configForm.fee_type === t && styles.chipActive]} onPress={() => setConfigField('fee_type')(t)}>
+                        <Text style={[styles.chipText, configForm.fee_type === t && styles.chipTextActive]}>{t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <ConfigField label={configForm.fee_type === 'PERCENTAGE' ? 'Fee Rate (%)' : configForm.fee_type === 'FIXED_PER_KG' ? 'Fee per kg (₹)' : 'Fee per transaction (₹)'} value={configForm.fee_value} onChangeText={setConfigField('fee_value')} placeholder="e.g. 0.5" />
+                  <View style={styles.configRow}>
+                    <View style={styles.configHalf}><ConfigField label="Min Fee (₹)" value={configForm.min_fee} onChangeText={setConfigField('min_fee')} placeholder="optional" /></View>
+                    <View style={styles.configHalf}><ConfigField label="Max Fee (₹)" value={configForm.max_fee} onChangeText={setConfigField('max_fee')} placeholder="optional" /></View>
+                  </View>
+                </View>
+
+                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
+                  <View style={styles.configSectionHeader}>
+                    <Text style={styles.configSectionIcon}>💰</Text>
+                    <View>
+                      <Text style={styles.configSectionTitle}>Commission</Text>
+                      <Text style={styles.configHint}>Firm commission earned per KC</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldLabel}>Commission Type</Text>
+                  <View style={styles.chipRow}>
+                    {FEE_TYPES.map(t => (
+                      <TouchableOpacity key={t} style={[styles.chip, configForm.commission_type === t && styles.chipActive]} onPress={() => setConfigField('commission_type')(t)}>
+                        <Text style={[styles.chipText, configForm.commission_type === t && styles.chipTextActive]}>{t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <ConfigField label={configForm.commission_type === 'PERCENTAGE' ? 'Commission Rate (%)' : configForm.commission_type === 'FIXED_PER_KG' ? 'Commission per kg (₹)' : 'Commission per transaction (₹)'} value={configForm.commission_value} onChangeText={setConfigField('commission_value')} placeholder="e.g. 2.0" />
+                  <View style={styles.configRow}>
+                    <View style={styles.configHalf}><ConfigField label="Min (₹)" value={configForm.min_commission} onChangeText={setConfigField('min_commission')} placeholder="optional" /></View>
+                    <View style={styles.configHalf}><ConfigField label="Max (₹)" value={configForm.max_commission} onChangeText={setConfigField('max_commission')} placeholder="optional" /></View>
+                  </View>
+                  <Text style={styles.fieldLabel}>Rounding Strategy</Text>
+                  <View style={styles.chipRow}>
+                    {ROUNDING_OPTS.map(r => (
+                      <TouchableOpacity key={r} style={[styles.chip, configForm.rounding_strategy === r && styles.chipActive]} onPress={() => setConfigField('rounding_strategy')(r)}>
+                        <Text style={[styles.chipText, configForm.rounding_strategy === r && styles.chipTextActive]}>{r.replace('_', ' ')}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <TouchableOpacity style={[styles.primaryBtn, { marginTop: spacing[4] }, saveConfigMutation.isPending && { opacity: 0.6 }]} onPress={() => saveConfigMutation.mutate()} disabled={saveConfigMutation.isPending}>
+                  {saveConfigMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save Configuration</Text>}
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ── Create / Edit Firm Modal ── */}
       <Modal visible={activeModal === 'create' || activeModal === 'edit'} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{activeModal === 'create' ? 'New Firm' : 'Edit Firm'}</Text>
-              <TouchableOpacity onPress={closeModal} style={styles.closeBtn}><Text style={styles.closeText}>✕</Text></TouchableOpacity>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.sheetContainer}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{activeModal === 'create' ? 'New Firm' : 'Edit Firm'}</Text>
+              <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}><Text style={styles.sheetCloseText}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.formScroll}>
-              <FormField label="Firm Name *" value={form.name} onChangeText={setField('name')} placeholder="e.g. Dev Mandi Pvt Ltd" />
-              <FormField label="APMC Name" value={form.apmc_name} onChangeText={setField('apmc_name')} placeholder="e.g. Kota APMC" />
+              <FormField label="Firm Name *" value={form.name} onChangeText={setField('name')} placeholder="e.g. Sharma Mandi Pvt Ltd" />
+              <FormField label="APMC Market" value={form.apmc_name} onChangeText={setField('apmc_name')} placeholder="e.g. Kota APMC" />
               <FormField label="Contact Phone" value={form.contact_phone} onChangeText={setField('contact_phone')} placeholder="e.g. 9800000000" keyboardType="phone-pad" />
               <FormField label="Address" value={form.address} onChangeText={setField('address')} placeholder="Full address" multiline />
               {activeModal === 'create' && (
                 <>
-                  <Text style={styles.sectionDivider}>Initial Firm Head (Optional)</Text>
+                  <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerLabel}>Initial Firm Head</Text><View style={styles.dividerLine} /></View>
                   <FormField label="Head Name" value={form.head_name} onChangeText={setField('head_name')} placeholder="e.g. Ramesh Kumar" />
                   <FormField label="Head Phone" value={form.head_phone} onChangeText={setField('head_phone')} placeholder="10-digit mobile" keyboardType="phone-pad" />
-                  <Text style={styles.formHint}>The firm head will be able to log in immediately using this phone number with any OTP (in dev mode).</Text>
+                  <Text style={styles.formHint}>ℹ️  The firm head can log in immediately using any OTP in dev mode.</Text>
                 </>
               )}
               <TouchableOpacity
-                style={[styles.submitBtn, !(createMutation.isPending || updateMutation.isPending) && { opacity: 1 }]}
+                style={[styles.primaryBtn, { marginTop: spacing[6] }, (createMutation.isPending || updateMutation.isPending) && { opacity: 0.6 }]}
                 onPress={() => activeModal === 'create' ? createMutation.mutate() : updateMutation.mutate()}
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {(createMutation.isPending || updateMutation.isPending) ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>{activeModal === 'create' ? 'Create Firm' : 'Save Changes'}</Text>}
+                {(createMutation.isPending || updateMutation.isPending) ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{activeModal === 'create' ? 'Create Firm' : 'Save Changes'}</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Role Permissions Modal ── */}
+      <Modal visible={activeModal === 'permissions'} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.sheetContainer}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={styles.flex1}>
+              <Text style={styles.sheetTitle}>Role Permissions</Text>
+              <Text style={styles.sheetSub}>{selectedFirm?.name}</Text>
+            </View>
+            <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}><Text style={styles.sheetCloseText}>✕</Text></TouchableOpacity>
+          </View>
+
+          {/* Role Tabs */}
+          <View style={styles.roleTabBar}>
+            {CONFIGURABLE_ROLES.map(r => (
+              <TouchableOpacity key={r} style={[styles.roleTab, selectedRole === r && styles.roleTabActive]} onPress={() => handleRoleSwitch(r)}>
+                <View style={[styles.roleTabDot, { backgroundColor: r === 'AUTHORIZER' ? '#3b82f6' : r === 'OPERATOR' ? '#f59e0b' : '#64748b' }]} />
+                <Text style={[styles.roleTabText, selectedRole === r && styles.roleTabTextActive]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.permHintRow}>
+            <Text style={styles.sheetHint}>FIRM_HEAD always has full access. Configure below roles.</Text>
+          </View>
+
+          {loadingPerms ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (
+            <>
+              <View style={styles.permHeaderRow}>
+                <Text style={styles.permModuleHeader}>Module</Text>
+                {[{ key: 'can_create', label: 'C', color: '#10b981' }, { key: 'can_read', label: 'R', color: '#3b82f6' }, { key: 'can_update', label: 'U', color: '#f59e0b' }, { key: 'can_delete', label: 'D', color: '#ef4444' }].map(h => (
+                  <Text key={h.key} style={[styles.permColHeader, { color: h.color }]}>{h.label}</Text>
+                ))}
+              </View>
+              <ScrollView contentContainerStyle={styles.permList}>
+                {allModules.map((mod, idx) => {
+                  const p = pendingPerms[mod.id] ?? { can_create: false, can_read: true, can_update: false, can_delete: false };
+                  const FIELDS = [
+                    { field: 'can_create' as const, color: '#10b981' },
+                    { field: 'can_read' as const, color: '#3b82f6' },
+                    { field: 'can_update' as const, color: '#f59e0b' },
+                    { field: 'can_delete' as const, color: '#ef4444' },
+                  ];
+                  return (
+                    <View key={mod.id} style={[styles.permRow, idx % 2 === 0 && styles.permRowAlt]}>
+                      <Text style={styles.permModuleName} numberOfLines={1}>{mod.label}</Text>
+                      {FIELDS.map(({ field, color }) => (
+                        <TouchableOpacity key={field} style={[styles.permBox, p[field] && { backgroundColor: color, borderColor: color }]} onPress={() => togglePerm(mod.id, field)}>
+                          <Text style={[styles.permBoxText, p[field] && styles.permBoxTextActive]}>{p[field] ? '✓' : ''}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {permsDirty && (
+            <View style={styles.saveBar}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => savePermsMutation.mutate()} disabled={savePermsMutation.isPending}>
+                {savePermsMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save {selectedRole} Permissions</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
 
-function FirmCard({ firm, onModules, onEdit, onDelete, inactive }: { firm: Firm; onModules: () => void; onEdit: () => void; onDelete: () => void; inactive?: boolean }) {
+function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, inactive }: {
+  firm: Firm; onModules: () => void; onConfig: () => void; onEdit: () => void;
+  onDelete: () => void; onPermissions: () => void; inactive?: boolean;
+}) {
+  const initials = firm.name.split(' ').slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
   return (
     <View style={[styles.firmCard, inactive && styles.firmCardInactive]}>
-      <View style={styles.firmTop}>
-        <View style={[styles.firmAvatar, inactive && { backgroundColor: '#94a3b8' }]}>
-          <Text style={styles.firmAvatarText}>{firm.name.charAt(0).toUpperCase()}</Text>
+      {/* Active indicator bar */}
+      <View style={[styles.firmAccentBar, { backgroundColor: inactive ? '#334155' : '#7c3aed' }]} />
+
+      <View style={styles.firmCardContent}>
+        {/* Top row: avatar + info + status */}
+        <View style={styles.firmTopRow}>
+          <View style={[styles.firmAvatar, inactive && { backgroundColor: '#1e293b' }]}>
+            <Text style={styles.firmAvatarText}>{initials}</Text>
+          </View>
+          <View style={styles.firmInfo}>
+            <Text style={[styles.firmName, inactive && { color: '#475569' }]} numberOfLines={1}>{firm.name}</Text>
+            {firm.apmc_name ? <Text style={styles.firmMeta}>📍 {firm.apmc_name}</Text> : null}
+            {firm.contact_phone ? <Text style={styles.firmMeta}>📞 {firm.contact_phone}</Text> : null}
+          </View>
+          <View style={styles.firmStatusCol}>
+            <View style={[styles.statusDot, { backgroundColor: inactive ? '#334155' : '#10b981' }]} />
+            <Text style={[styles.userCount, { color: inactive ? '#475569' : '#94a3b8' }]}>{firm.user_count} users</Text>
+          </View>
         </View>
-        <View style={styles.firmInfo}>
-          <Text style={[styles.firmName, inactive && { color: '#94a3b8' }]}>{firm.name}</Text>
-          {firm.apmc_name ? <Text style={styles.firmMeta}>📍 {firm.apmc_name}</Text> : null}
-          {firm.contact_phone ? <Text style={styles.firmMeta}>📞 {firm.contact_phone}</Text> : null}
-          <Text style={styles.firmUsers}>{firm.user_count} active users</Text>
+
+        {/* Action grid */}
+        <View style={styles.actionGrid}>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(124,58,237,0.12)' }]} onPress={onModules}>
+            <Text style={styles.actionTileIcon}>🔧</Text>
+            <Text style={[styles.actionTileText, { color: '#a78bfa' }]}>Modules</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(59,130,246,0.12)' }]} onPress={onPermissions}>
+            <Text style={styles.actionTileIcon}>🔑</Text>
+            <Text style={[styles.actionTileText, { color: '#60a5fa' }]}>Permissions</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(16,185,129,0.12)' }]} onPress={onConfig}>
+            <Text style={styles.actionTileIcon}>📊</Text>
+            <Text style={[styles.actionTileText, { color: '#34d399' }]}>Rates</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(245,158,11,0.12)' }]} onPress={onEdit}>
+            <Text style={styles.actionTileIcon}>✏️</Text>
+            <Text style={[styles.actionTileText, { color: '#fbbf24' }]}>Edit</Text>
+          </TouchableOpacity>
+          {!inactive && (
+            <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(239,68,68,0.10)' }]} onPress={onDelete}>
+              <Text style={styles.actionTileIcon}>🗑️</Text>
+              <Text style={[styles.actionTileText, { color: '#f87171' }]}>Deactivate</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        {inactive && <View style={styles.inactiveBadge}><Text style={styles.inactiveBadgeText}>Inactive</Text></View>}
       </View>
-      <View style={styles.firmActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={onModules}><Text style={styles.actionBtnText}>🔧 Modules</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={onEdit}><Text style={styles.actionBtnText}>✏️ Edit</Text></TouchableOpacity>
-        {!inactive && <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDanger]} onPress={onDelete}><Text style={[styles.actionBtnText, { color: '#ef4444' }]}>🗑️ Deactivate</Text></TouchableOpacity>}
-      </View>
+    </View>
+  );
+}
+
+function ConfigField({ label, value, onChangeText, placeholder }: any) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput style={styles.fieldInput} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#94a3b8" keyboardType="decimal-pad" />
     </View>
   );
 }
@@ -255,63 +647,193 @@ function FormField({ label, value, onChangeText, placeholder, keyboardType, mult
   );
 }
 
+const P = '#7c3aed'; // primary purple
+const BG = '#050d1a'; // deep navy
+const CARD = '#0d1829'; // card background
+const BORDER = 'rgba(124,58,237,0.18)';
+const TEXT1 = '#f1f5f9';
+const TEXT2 = '#94a3b8';
+const TEXT3 = '#475569';
+const SHEET_BG = '#ffffff';
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing[5], paddingTop: 56, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
-  headerTitle: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, color: '#f8fafc' },
-  headerSub: { fontSize: typography.size.sm, color: '#94a3b8', marginTop: 2 },
-  logoutBtn: { borderWidth: 1, borderColor: '#ef4444', borderRadius: radius.md, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
-  logoutText: { color: '#ef4444', fontSize: typography.size.sm, fontWeight: typography.weight.medium },
-  statsBar: { flexDirection: 'row', backgroundColor: '#1e293b', margin: spacing[4], borderRadius: radius.lg, borderWidth: 1, borderColor: '#334155' },
-  statItem: { flex: 1, alignItems: 'center', paddingVertical: spacing[4] },
-  statNum: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: '#7c3aed' },
-  statLabel: { fontSize: typography.size.xs, color: '#94a3b8', marginTop: 2 },
-  statDivider: { width: 1, backgroundColor: '#334155' },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], marginBottom: spacing[2] },
-  sectionTitle: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#f8fafc' },
-  addBtn: { backgroundColor: '#7c3aed', borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[2] },
-  addBtnText: { color: '#fff', fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  list: { padding: spacing[4], gap: spacing[3], paddingBottom: spacing[10] },
-  inactiveLabel: { color: '#64748b', fontSize: typography.size.xs, fontWeight: typography.weight.medium, marginTop: spacing[4], marginBottom: spacing[2], paddingHorizontal: spacing[2] },
-  emptyState: { padding: spacing[8], alignItems: 'center' },
-  emptyText: { color: '#64748b', fontSize: typography.size.sm, textAlign: 'center' },
-  firmCard: { backgroundColor: '#1e293b', borderRadius: radius.lg, padding: spacing[4], borderWidth: 1, borderColor: '#334155' },
-  firmCardInactive: { borderColor: '#1e293b', opacity: 0.7 },
-  firmTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing[3] },
-  firmAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#7c3aed', justifyContent: 'center', alignItems: 'center', marginRight: spacing[3] },
-  firmAvatarText: { color: '#fff', fontSize: typography.size.lg, fontWeight: typography.weight.bold },
+  // ── Main Layout ──────────────────────────────────────────────────────────────
+  container: { flex: 1, backgroundColor: BG },
+  flex1: { flex: 1 },
+
+  // ── Header ───────────────────────────────────────────────────────────────────
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing[5], paddingTop: 58, paddingBottom: spacing[4],
+    backgroundColor: CARD, borderBottomWidth: 1, borderBottomColor: BORDER,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing[3] },
+  logoMark: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: P,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(167,139,250,0.4)',
+  },
+  logoText: { fontSize: 14, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+  headerBrand: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: TEXT1, letterSpacing: -0.3 },
+  headerSub: { fontSize: typography.size.xs, color: TEXT2, marginTop: 1 },
+  logoutBtn: {
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.5)', borderRadius: radius.full,
+    paddingHorizontal: spacing[3], paddingVertical: spacing[2],
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  logoutText: { color: '#f87171', fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
+
+  // ── Stats ─────────────────────────────────────────────────────────────────────
+  statsRow: { flexDirection: 'row', gap: spacing[3], padding: spacing[4], paddingBottom: spacing[2] },
+  statCard: {
+    flex: 1, backgroundColor: CARD, borderRadius: radius.xl, paddingVertical: spacing[4],
+    alignItems: 'center', borderTopWidth: 3, borderWidth: 1, borderColor: BORDER,
+  },
+  statNum: { fontSize: 28, fontWeight: '800', color: P, letterSpacing: -0.5 },
+  statLabel: { fontSize: typography.size.xs, color: TEXT2, marginTop: 3, fontWeight: typography.weight.medium },
+
+  // ── Section Header ────────────────────────────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing[5], paddingVertical: spacing[3],
+  },
+  sectionTitle: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: TEXT1 },
+  sectionSub: { fontSize: typography.size.xs, color: TEXT3, marginTop: 1 },
+  newFirmBtn: {
+    backgroundColor: P, borderRadius: radius.full, paddingHorizontal: spacing[4], paddingVertical: spacing[2],
+    borderWidth: 1, borderColor: 'rgba(167,139,250,0.3)',
+  },
+  newFirmBtnText: { color: '#fff', fontSize: typography.size.sm, fontWeight: typography.weight.bold, letterSpacing: 0.3 },
+
+  // ── Firm List ─────────────────────────────────────────────────────────────────
+  list: { paddingHorizontal: spacing[4], paddingBottom: spacing[12], gap: spacing[3] },
+  inactiveLabel: {
+    textAlign: 'center', color: TEXT3, fontSize: typography.size.xs,
+    fontWeight: typography.weight.medium, letterSpacing: 1.5,
+    marginVertical: spacing[3],
+  },
+
+  // ── Empty State ───────────────────────────────────────────────────────────────
+  emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: spacing[8] },
+  emptyIcon: { fontSize: 48, marginBottom: spacing[3] },
+  emptyTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: TEXT2, marginBottom: spacing[2] },
+  emptyText: { fontSize: typography.size.sm, color: TEXT3, textAlign: 'center', lineHeight: 20 },
+
+  // ── Firm Card ─────────────────────────────────────────────────────────────────
+  firmCard: {
+    backgroundColor: CARD, borderRadius: radius.xl, overflow: 'hidden',
+    borderWidth: 1, borderColor: BORDER, flexDirection: 'row',
+  },
+  firmCardInactive: { borderColor: '#1e293b', opacity: 0.6 },
+  firmAccentBar: { width: 4 },
+  firmCardContent: { flex: 1, padding: spacing[4] },
+  firmTopRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing[4], gap: spacing[3] },
+  firmAvatar: {
+    width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(124,58,237,0.2)',
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)',
+  },
+  firmAvatarText: { color: '#c4b5fd', fontSize: typography.size.base, fontWeight: '800' },
   firmInfo: { flex: 1 },
-  firmName: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: '#f8fafc' },
-  firmMeta: { fontSize: typography.size.xs, color: '#64748b', marginTop: 2 },
-  firmUsers: { fontSize: typography.size.xs, color: '#94a3b8', marginTop: 2 },
-  inactiveBadge: { backgroundColor: '#334155', borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: 2 },
-  inactiveBadgeText: { color: '#94a3b8', fontSize: 10 },
-  firmActions: { flexDirection: 'row', gap: spacing[2], borderTopWidth: 1, borderTopColor: '#334155', paddingTop: spacing[3] },
-  actionBtn: { flex: 1, alignItems: 'center', paddingVertical: spacing[2], borderRadius: radius.sm, backgroundColor: '#0f172a' },
-  actionBtnDanger: { backgroundColor: '#1a0a0a' },
-  actionBtnText: { fontSize: typography.size.xs, color: '#94a3b8', fontWeight: typography.weight.medium },
-  modal: { flex: 1, backgroundColor: '#f8fafc' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing[5], backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
-  modalTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: '#f8fafc' },
-  modalSub: { fontSize: typography.size.sm, color: '#94a3b8', marginTop: 2 },
-  closeBtn: { padding: spacing[2] },
-  closeText: { fontSize: 20, color: '#94a3b8' },
-  modalHint: { fontSize: typography.size.sm, color: '#64748b', padding: spacing[4] },
+  firmName: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: TEXT1, marginBottom: 3 },
+  firmMeta: { fontSize: typography.size.xs, color: TEXT3, marginTop: 2 },
+  firmStatusCol: { alignItems: 'flex-end', gap: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  userCount: { fontSize: typography.size.xs, fontWeight: typography.weight.medium },
+
+  // Action Grid — 5 tiles in a wrapping row
+  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
+  actionTile: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing[3], paddingVertical: spacing[2],
+    borderRadius: radius.full,
+  },
+  actionTileIcon: { fontSize: 13 },
+  actionTileText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
+
+  // ── Sheet (modal) ─────────────────────────────────────────────────────────────
+  sheetContainer: { flex: 1, backgroundColor: SHEET_BG },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#e2e8f0', alignSelf: 'center', marginTop: spacing[3], marginBottom: spacing[1] },
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[5],
+    paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: '#e2e8f0',
+    backgroundColor: '#fff',
+  },
+  sheetTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: '#0f172a' },
+  sheetSub: { fontSize: typography.size.xs, color: '#64748b', marginTop: 2 },
+  sheetCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  sheetCloseText: { fontSize: 14, color: '#475569', fontWeight: typography.weight.bold },
+  sheetHint: { fontSize: typography.size.sm, color: '#64748b', paddingHorizontal: spacing[5], paddingVertical: spacing[3] },
+  permHintRow: { backgroundColor: '#faf5ff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+
+  // ── Module List ───────────────────────────────────────────────────────────────
   moduleList: { padding: spacing[4], gap: spacing[2], paddingBottom: spacing[10] },
-  moduleRow: { backgroundColor: '#fff', borderRadius: radius.lg, padding: spacing[4], flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
-  moduleRowActive: { borderColor: '#7c3aed', backgroundColor: '#faf5ff' },
-  moduleInfo: { flex: 1, marginRight: spacing[3] },
+  moduleRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: radius.xl, padding: spacing[4], borderWidth: 1, borderColor: '#e2e8f0',
+    gap: spacing[3],
+  },
+  moduleRowActive: { borderColor: P, backgroundColor: '#faf5ff' },
+  moduleIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  moduleIconActive: { backgroundColor: 'rgba(124,58,237,0.12)' },
+  moduleIconText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#64748b' },
+  moduleInfo: { flex: 1 },
   moduleName: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: '#1e293b' },
   moduleDesc: { fontSize: typography.size.xs, color: '#64748b', marginTop: 2 },
+
+  // ── Role Permissions ──────────────────────────────────────────────────────────
+  roleTabBar: { flexDirection: 'row', margin: spacing[4], marginBottom: spacing[2], backgroundColor: '#f1f5f9', borderRadius: radius.xl, padding: 4 },
+  roleTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: spacing[2], borderRadius: radius.lg },
+  roleTabActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  roleTabDot: { width: 6, height: 6, borderRadius: 3 },
+  roleTabText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: '#64748b' },
+  roleTabTextActive: { color: '#1e293b' },
+
+  permHeaderRow: {
+    flexDirection: 'row', paddingHorizontal: spacing[5], paddingVertical: spacing[2],
+    backgroundColor: '#f8fafc', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#e2e8f0',
+  },
+  permModuleHeader: { flex: 1, fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  permColHeader: { width: 40, textAlign: 'center', fontSize: typography.size.xs, fontWeight: typography.weight.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  permList: { padding: spacing[3], paddingBottom: spacing[10] },
+  permRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[3], paddingVertical: spacing[3], borderRadius: radius.md },
+  permRowAlt: { backgroundColor: '#f8fafc' },
+  permModuleName: { flex: 1, fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: '#1e293b' },
+  permBox: { width: 34, height: 34, borderRadius: 8, borderWidth: 1.5, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', marginLeft: 3 },
+  permBoxText: { fontSize: 14, color: '#94a3b8', fontWeight: typography.weight.bold },
+  permBoxTextActive: { color: '#fff', fontSize: 14 },
+
+  // ── Save Bar ──────────────────────────────────────────────────────────────────
   saveBar: { padding: spacing[4], backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
-  saveBtn: { backgroundColor: '#7c3aed', borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontSize: typography.size.base, fontWeight: typography.weight.bold },
+  primaryBtn: {
+    backgroundColor: P, borderRadius: radius.xl, paddingVertical: spacing[4],
+    alignItems: 'center', shadowColor: P, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  primaryBtnText: { color: '#fff', fontSize: typography.size.base, fontWeight: typography.weight.bold, letterSpacing: 0.3 },
+
+  // ── Form Sheet ────────────────────────────────────────────────────────────────
   formScroll: { padding: spacing[5], paddingBottom: spacing[10] },
   field: { marginBottom: spacing[4] },
-  fieldLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: '#475569', marginBottom: spacing[1] },
-  fieldInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: radius.md, paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: '#1e293b' },
-  sectionDivider: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: '#7c3aed', marginTop: spacing[4], marginBottom: spacing[2], paddingBottom: spacing[2], borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  formHint: { fontSize: typography.size.xs, color: '#94a3b8', marginBottom: spacing[4], fontStyle: 'italic' },
-  submitBtn: { backgroundColor: '#7c3aed', borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', marginTop: spacing[4] },
-  submitBtnText: { color: '#fff', fontSize: typography.size.base, fontWeight: typography.weight.bold },
+  fieldLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: '#475569', marginBottom: spacing[2] },
+  fieldInput: {
+    backgroundColor: '#f8fafc', borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: radius.xl,
+    paddingHorizontal: spacing[4], paddingVertical: spacing[3], fontSize: typography.size.base, color: '#1e293b',
+  },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginVertical: spacing[4] },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#e2e8f0' },
+  dividerLabel: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: P, letterSpacing: 0.5, textTransform: 'uppercase' },
+  formHint: { fontSize: typography.size.xs, color: '#94a3b8', fontStyle: 'italic', marginBottom: spacing[3], lineHeight: 18 },
+
+  // ── Config Sheet ──────────────────────────────────────────────────────────────
+  configSection: { backgroundColor: '#fff', borderRadius: radius.xl, padding: spacing[4], borderWidth: 1, borderColor: '#e2e8f0' },
+  configSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[4] },
+  configSectionIcon: { fontSize: 24 },
+  configSectionTitle: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#1e293b' },
+  configHint: { fontSize: typography.size.xs, color: '#64748b', marginTop: 1 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[3] },
+  chip: { paddingHorizontal: spacing[3], paddingVertical: spacing[2], borderRadius: radius.full, borderWidth: 1.5, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' },
+  chipActive: { backgroundColor: P, borderColor: P },
+  chipText: { fontSize: typography.size.xs, color: '#475569', fontWeight: typography.weight.semibold },
+  chipTextActive: { color: '#fff' },
+  configRow: { flexDirection: 'row', gap: spacing[3] },
+  configHalf: { flex: 1 },
 });

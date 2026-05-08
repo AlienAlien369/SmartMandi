@@ -13,6 +13,8 @@ interface UserRecord {
   firm_id: string;
   phone: string;
   role: string;
+  name: string;
+  firm_name: string;
   is_active: boolean;
 }
 
@@ -20,7 +22,7 @@ export interface AuthTokens {
   access_token: string;
   refresh_token: string;
   expires_in: number;
-  user: { id: string; firm_id: string; role: string };
+  user: { id: string; firm_id: string; role: string; name: string; phone: string; firm_name: string };
 }
 
 @Injectable()
@@ -44,7 +46,11 @@ export class AuthService {
     try {
       await qr.query(`SET LOCAL app.current_firm_id = '${dto.firm_id}'`);
       const rows = await qr.query(
-        `SELECT id, firm_id, phone, role, is_active FROM users WHERE phone = $1 AND firm_id = $2 AND is_active = true LIMIT 1`,
+        `SELECT u.id, u.firm_id, u.phone, u.role, u.name, u.is_active, f.name AS firm_name
+         FROM users u
+         JOIN firms f ON f.id = u.firm_id
+         WHERE u.phone = $1 AND u.firm_id = $2 AND u.is_active = true
+         LIMIT 1`,
         [dto.phone, dto.firm_id],
       );
       if (rows.length > 0) user = rows[0] as UserRecord;
@@ -57,11 +63,22 @@ export class AuthService {
 
     // Fallback to default FIRM_HEAD user for backwards compatibility
     if (!user) {
+      // Try to fetch firm name for the fallback
+      let firm_name = 'Mandi Firm';
+      try {
+        const firmRows = await this.dataSource.query(
+          `SELECT name FROM firms WHERE id = $1 LIMIT 1`,
+          [dto.firm_id],
+        );
+        if (firmRows.length > 0) firm_name = firmRows[0].name;
+      } catch {}
       user = {
         id: '5e138578-f0a6-4679-a463-79730d20b035',
         firm_id: dto.firm_id,
         phone: dto.phone,
         role: 'FIRM_HEAD',
+        name: 'Firm Head',
+        firm_name,
         is_active: true,
       };
     }
@@ -102,7 +119,14 @@ export class AuthService {
       access_token: accessToken,
       refresh_token: refreshToken,
       expires_in: 3600,
-      user: { id: user.id, firm_id: user.firm_id, role: user.role },
+      user: {
+        id: user.id,
+        firm_id: user.firm_id,
+        role: user.role,
+        name: user.name,
+        phone: user.phone,
+        firm_name: user.firm_name,
+      },
     };
   }
 }

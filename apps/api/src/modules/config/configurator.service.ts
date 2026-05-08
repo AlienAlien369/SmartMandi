@@ -168,4 +168,112 @@ export class ConfiguratorService {
 
     return this.configVersionRepo.save(newVersion);
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SUPER ADMIN — APMC FEE CONFIG MANAGEMENT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async getApmcFeeConfigForFirm(firmId: string): Promise<ApmcFeeConfig | null> {
+    return this.apmcRepo
+      .createQueryBuilder('a')
+      .where('a.firm_id = :firmId', { firmId })
+      .andWhere('a.effective_to IS NULL')
+      .orderBy('a.effective_from', 'DESC')
+      .getOne();
+  }
+
+  async upsertApmcFeeConfig(
+    firmId: string,
+    dto: { fee_type: string; fee_value: number; min_fee?: number | null; max_fee?: number | null },
+    saId: string,
+  ): Promise<ApmcFeeConfig> {
+    // Ensure a config version exists
+    let cv = await this.configVersionRepo.findOne({ where: { firm_id: firmId, is_active: true } });
+    if (!cv) {
+      cv = await this.configVersionRepo.save(
+        this.configVersionRepo.create({ firm_id: firmId, version: 1, effective_from: new Date(), effective_to: null, is_active: true, created_by: saId }),
+      );
+    }
+
+    // Close all open configs for this firm
+    await this.apmcRepo
+      .createQueryBuilder()
+      .update(ApmcFeeConfig)
+      .set({ effective_to: new Date() })
+      .where('firm_id = :firmId AND effective_to IS NULL', { firmId })
+      .execute();
+
+    const newConfig = this.apmcRepo.create({
+      firm_id: firmId,
+      config_version_id: cv.id,
+      fee_type: dto.fee_type as any,
+      fee_value: dto.fee_value.toString(),
+      discount_type: null,
+      discount_value: '0',
+      min_fee: dto.min_fee != null ? dto.min_fee.toString() : null,
+      max_fee: dto.max_fee != null ? dto.max_fee.toString() : null,
+      effective_from: new Date(),
+      effective_to: null,
+    });
+
+    return this.apmcRepo.save(newConfig);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SUPER ADMIN — COMMISSION CONFIG MANAGEMENT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async getCommissionConfigForFirm(firmId: string): Promise<CommissionConfig | null> {
+    return this.commissionRepo
+      .createQueryBuilder('c')
+      .where('c.firm_id = :firmId', { firmId })
+      .andWhere('c.scope = :scope', { scope: ConfigScope.FIRM })
+      .andWhere('c.effective_to IS NULL')
+      .orderBy('c.effective_from', 'DESC')
+      .getOne();
+  }
+
+  async upsertCommissionConfig(
+    firmId: string,
+    dto: {
+      commission_type: string;
+      commission_value: number;
+      rounding_strategy?: string;
+      min_commission?: number | null;
+      max_commission?: number | null;
+    },
+    saId: string,
+  ): Promise<CommissionConfig> {
+    // Ensure a config version exists
+    let cv = await this.configVersionRepo.findOne({ where: { firm_id: firmId, is_active: true } });
+    if (!cv) {
+      cv = await this.configVersionRepo.save(
+        this.configVersionRepo.create({ firm_id: firmId, version: 1, effective_from: new Date(), effective_to: null, is_active: true, created_by: saId }),
+      );
+    }
+
+    // Close all open FIRM-scope commission configs
+    await this.commissionRepo
+      .createQueryBuilder()
+      .update(CommissionConfig)
+      .set({ effective_to: new Date() })
+      .where("firm_id = :firmId AND scope = 'FIRM' AND effective_to IS NULL", { firmId })
+      .execute();
+
+    const newConfig = this.commissionRepo.create({
+      firm_id: firmId,
+      config_version_id: cv.id,
+      scope: ConfigScope.FIRM,
+      scope_ref_id: null,
+      commission_type: dto.commission_type as any,
+      commission_value: dto.commission_value.toString(),
+      rounding_strategy: (dto.rounding_strategy ?? 'ROUND_HALF_UP') as any,
+      min_commission: dto.min_commission != null ? dto.min_commission.toString() : null,
+      max_commission: dto.max_commission != null ? dto.max_commission.toString() : null,
+      effective_from: new Date(),
+      effective_to: null,
+    });
+
+    return this.commissionRepo.save(newConfig);
+  }
 }

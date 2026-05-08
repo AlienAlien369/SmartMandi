@@ -19,6 +19,7 @@ const initialState: AuthState = {
   isSuperAdmin: false,
   saToken: null,
   accessibleModuleIds: ALL_MODULE_IDS,
+  permissions: {},
 };
 
 export const login = createAsyncThunk(
@@ -41,7 +42,14 @@ export const login = createAsyncThunk(
       if (data.user?.role === 'FIRM_HEAD') moduleIds = ALL_MODULE_IDS;
       else moduleIds = ['DASHBOARD'];
     }
-    return { ...data, accessibleModuleIds: moduleIds };
+    let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
+    try {
+      const permsRes = await axios.get(`${API_BASE_URL}/rbac/my-permissions`, {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      permissions = permsRes.data;
+    } catch {}
+    return { ...data, accessibleModuleIds: moduleIds, permissions };
   },
 );
 
@@ -78,7 +86,14 @@ export const restoreSession = createAsyncThunk('auth/restoreSession', async () =
     moduleIds = (modsRes.data as Array<{ id: string }>).map(m => m.id);
     await AsyncStorage.setItem('accessible_module_ids', JSON.stringify(moduleIds));
   } catch {}
-  return { type: 'user' as const, access_token: token, user: JSON.parse(userStr) as User, accessibleModuleIds: moduleIds };
+  let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
+  try {
+    const permsRes = await axios.get(`${API_BASE_URL}/rbac/my-permissions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    permissions = permsRes.data;
+  } catch {}
+  return { type: 'user' as const, access_token: token, user: JSON.parse(userStr) as User, accessibleModuleIds: moduleIds, permissions };
 });
 
 export const logout = createAsyncThunk('auth/logout', async () => {
@@ -108,6 +123,7 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         state.isSuperAdmin = false;
         state.accessibleModuleIds = action.payload.accessibleModuleIds;
+        state.permissions = action.payload.permissions;
         // Persist module IDs
         AsyncStorage.setItem('accessible_module_ids', JSON.stringify(action.payload.accessibleModuleIds));
       })
@@ -131,6 +147,7 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
           state.isSuperAdmin = false;
           state.accessibleModuleIds = action.payload.accessibleModuleIds;
+          state.permissions = action.payload.permissions;
         }
       })
       .addCase(restoreSession.rejected, state => {
@@ -145,6 +162,7 @@ const authSlice = createSlice({
         state.isSuperAdmin = false;
         state.saToken = null;
         state.accessibleModuleIds = ALL_MODULE_IDS;
+        state.permissions = {};
       })
       .addCase(logoutSuperAdmin.fulfilled, state => {
         state.isSuperAdmin = false;

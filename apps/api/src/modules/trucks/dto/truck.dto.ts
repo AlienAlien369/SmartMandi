@@ -68,9 +68,25 @@ export class TruckFiltersDto {
   @IsOptional() @IsEnum(TruckStatus)
   status?: TruckStatus;
 
+  /** Exact date (legacy — still supported) */
   @ApiPropertyOptional()
   @IsOptional() @IsDateString()
   date?: string;
+
+  /** Date range start (YYYY-MM-DD) */
+  @ApiPropertyOptional()
+  @IsOptional() @IsDateString()
+  date_from?: string;
+
+  /** Date range end (YYYY-MM-DD) */
+  @ApiPropertyOptional()
+  @IsOptional() @IsDateString()
+  date_to?: string;
+
+  /** Search across truck_number, driver_name, driver_phone, produce_name */
+  @ApiPropertyOptional()
+  @IsOptional() @IsString()
+  search?: string;
 
   @ApiPropertyOptional()
   @IsOptional() @IsUUID()

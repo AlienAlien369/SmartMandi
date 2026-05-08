@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
+import { Input } from '../../components/ui';
+import { Button } from '../../components/ui';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
@@ -39,7 +41,9 @@ export function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.emoji}>🌾</Text>
+          <View style={styles.iconCircle}>
+            <Text style={styles.emoji}>🌾</Text>
+          </View>
           <Text style={styles.title}>Smart Mandi</Text>
           <Text style={styles.subtitle}>Digital APMC Mandi Management</Text>
         </View>
@@ -59,39 +63,30 @@ export function LoginScreen() {
           <Text style={styles.cardTitle}>Firm Login</Text>
           <Text style={styles.cardSubtitle}>Sign in to your mandi account</Text>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Firm ID</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your firm ID"
-              placeholderTextColor={colors.textTertiary}
-              value={firmId}
-              onChangeText={setFirmId}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          <Input
+            label="Firm ID"
+            placeholder="Enter your firm ID"
+            value={firmId}
+            onChangeText={setFirmId}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Mobile Number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="10-digit mobile number"
-              placeholderTextColor={colors.textTertiary}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              maxLength={10}
-            />
-          </View>
+          <Input
+            label="Mobile Number"
+            placeholder="10-digit mobile number"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            maxLength={10}
+          />
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+          <Button
+            label={loading ? 'Sending...' : 'Get OTP'}
             onPress={handleSendOtp}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>{loading ? 'Sending...' : 'Get OTP'}</Text>
-          </TouchableOpacity>
+            loading={loading}
+            style={styles.submitBtn}
+          />
         </View>
 
         <Text style={styles.footer}>Smart Mandi v2.0 · Multi-tenant APMC</Text>
@@ -101,10 +96,16 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing[5] },
   header: { alignItems: 'center', marginBottom: spacing[8] },
-  emoji: { fontSize: 56, marginBottom: spacing[2] },
+  iconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing[2],
+  },
+  emoji: { fontSize: 32 },
   title: {
     fontSize: typography.size['3xl'], fontWeight: typography.weight.extrabold,
     color: colors.textPrimary, letterSpacing: -0.5,
@@ -113,8 +114,9 @@ const styles = StyleSheet.create({
     fontSize: typography.size.base, color: colors.textSecondary, marginTop: spacing[1],
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: radius.xl, padding: spacing[6],
+    borderWidth: 0.5, borderColor: colors.border,
     ...shadow.md,
   },
   cardTitle: {
@@ -122,42 +124,23 @@ const styles = StyleSheet.create({
     color: colors.textPrimary, marginBottom: spacing[1],
   },
   cardSubtitle: {
-    fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing[6],
+    fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing[5],
   },
-  field: { marginBottom: spacing[4] },
-  label: {
-    fontSize: typography.size.sm, fontWeight: typography.weight.medium,
-    color: colors.textSecondary, marginBottom: spacing[1],
-  },
-  input: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
-    paddingHorizontal: spacing[4], paddingVertical: spacing[3],
-    fontSize: typography.size.base, color: colors.textPrimary,
-    backgroundColor: colors.background,
-  },
-  button: {
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    paddingVertical: spacing[4], alignItems: 'center', marginTop: spacing[2],
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: {
-    color: colors.textInverse, fontSize: typography.size.base,
-    fontWeight: typography.weight.semibold,
-  },
+  submitBtn: { marginTop: spacing[1] },
   footer: {
-    textAlign: 'center', color: colors.textTertiary,
+    textAlign: 'center', color: colors.textMuted,
     fontSize: typography.size.xs, marginTop: spacing[6],
   },
   saBanner: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1e1b4b',
+    backgroundColor: '#1C1C1A',
     borderRadius: radius.lg, padding: spacing[4],
     marginBottom: spacing[4],
-    borderWidth: 1, borderColor: '#4338ca',
+    borderWidth: 0.5, borderColor: 'rgba(240,237,232,0.15)',
   },
   saBannerIcon: { fontSize: 24, marginRight: spacing[3] },
   saBannerText: { flex: 1 },
-  saBannerTitle: { color: '#a5b4fc', fontSize: typography.size.base, fontWeight: typography.weight.bold },
-  saBannerSub: { color: '#6366f1', fontSize: typography.size.xs, marginTop: 2 },
-  saBannerArrow: { fontSize: 22, color: '#6366f1' },
+  saBannerTitle: { color: '#F0EDE8', fontSize: typography.size.base, fontWeight: typography.weight.bold },
+  saBannerSub: { color: '#9E9B96', fontSize: typography.size.xs, marginTop: 2 },
+  saBannerArrow: { fontSize: 22, color: '#9E9B96' },
 });

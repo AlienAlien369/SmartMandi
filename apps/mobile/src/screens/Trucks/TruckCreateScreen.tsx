@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Alert,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -10,6 +10,7 @@ import { trucksApi } from '../../api/endpoints';
 import type { TruckStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
+import { Input, Button } from '../../components/ui';
 
 type Nav = NativeStackNavigationProp<TruckStackParamList>;
 
@@ -29,7 +30,6 @@ export function TruckCreateScreen() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      // Strip empty strings for optional fields — empty string fails UUID/number validation
       const payload: Record<string, any> = {
         truck_number: form.truck_number.trim(),
         driver_name: form.driver_name.trim(),
@@ -51,60 +51,36 @@ export function TruckCreateScreen() {
   const setField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          <FormField label="Truck Number *" value={form.truck_number} onChangeText={v => setField('truck_number', v)} placeholder="e.g. RJ14GB0001" autoCapitalize="characters" />
-          <FormField label="Driver Name *" value={form.driver_name} onChangeText={v => setField('driver_name', v)} placeholder="Driver's full name" />
-          <FormField label="Driver Phone" value={form.driver_phone} onChangeText={v => setField('driver_phone', v)} placeholder="Mobile number" keyboardType="phone-pad" />
-          <FormField label="Produce Name *" value={form.produce_name} onChangeText={v => setField('produce_name', v)} placeholder="e.g. Wheat, Onion" />
-          <FormField label="Sale Date *" value={form.sale_date} onChangeText={v => setField('sale_date', v)} placeholder="YYYY-MM-DD" />
-          <FormField label="Estimated Weight (kg)" value={form.estimated_weight_kg} onChangeText={v => setField('estimated_weight_kg', v)} placeholder="Optional estimate" keyboardType="decimal-pad" />
-          <FormField label="Notes" value={form.notes} onChangeText={v => setField('notes', v)} placeholder="Optional" multiline />
+          <Input label="Truck Number *" value={form.truck_number} onChangeText={v => setField('truck_number', v)} placeholder="e.g. RJ14GB0001" autoCapitalize="characters" />
+          <Input label="Driver Name *" value={form.driver_name} onChangeText={v => setField('driver_name', v)} placeholder="Driver's full name" />
+          <Input label="Driver Phone" value={form.driver_phone} onChangeText={v => setField('driver_phone', v)} placeholder="Mobile number" keyboardType="phone-pad" />
+          <Input label="Produce Name *" value={form.produce_name} onChangeText={v => setField('produce_name', v)} placeholder="e.g. Wheat, Onion" />
+          <Input label="Sale Date *" value={form.sale_date} onChangeText={v => setField('sale_date', v)} placeholder="YYYY-MM-DD" />
+          <Input label="Estimated Weight (kg)" value={form.estimated_weight_kg} onChangeText={v => setField('estimated_weight_kg', v)} placeholder="Optional estimate" keyboardType="decimal-pad" />
+          <Input label="Notes" value={form.notes} onChangeText={v => setField('notes', v)} placeholder="Optional" multiline style={styles.notesInput} />
         </View>
 
-        <TouchableOpacity
-          style={[styles.submitBtn, mutation.isPending && styles.btnDisabled]}
+        <Button
+          label={mutation.isPending ? 'Scheduling...' : '🚛 Schedule Truck'}
           onPress={() => mutation.mutate()}
-          disabled={mutation.isPending}
-        >
-          <Text style={styles.submitText}>
-            {mutation.isPending ? 'Scheduling...' : '🚛 Schedule Truck'}
-          </Text>
-        </TouchableOpacity>
+          loading={mutation.isPending}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function FormField({ label, ...props }: { label: string } & any) {
-  return (
-    <View style={fieldStyles.field}>
-      <Text style={fieldStyles.label}>{label}</Text>
-      <TextInput style={[fieldStyles.input, props.multiline && fieldStyles.multiline]} placeholderTextColor={colors.textTertiary} {...props} />
-    </View>
-  );
-}
-
-const fieldStyles = StyleSheet.create({
-  field: { marginBottom: spacing[4] },
-  label: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textSecondary, marginBottom: spacing[1] },
-  input: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
-    paddingHorizontal: spacing[4], paddingVertical: spacing[3],
-    fontSize: typography.size.base, color: colors.textPrimary, backgroundColor: colors.background,
-  },
-  multiline: { height: 80, textAlignVertical: 'top' },
-});
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing[5], paddingBottom: spacing[10] },
-  card: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[5], ...shadow.sm, marginBottom: spacing[5] },
-  submitBtn: {
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    paddingVertical: spacing[4], alignItems: 'center', ...shadow.md,
+  card: {
+    backgroundColor: colors.surfaceRaised, borderRadius: radius.xl,
+    padding: spacing[5], borderWidth: 0.5, borderColor: colors.border,
+    ...shadow.sm, marginBottom: spacing[5],
   },
-  btnDisabled: { opacity: 0.6 },
-  submitText: { color: colors.textInverse, fontSize: typography.size.base, fontWeight: typography.weight.semibold },
+  notesInput: { height: 80, textAlignVertical: 'top' },
 });

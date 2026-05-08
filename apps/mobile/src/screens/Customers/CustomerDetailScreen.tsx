@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
-  TouchableOpacity, LayoutAnimation, Platform, UIManager,
+  TouchableOpacity, LayoutAnimation, Platform, UIManager, Alert,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { customersApi } from '../../api/endpoints';
 import type { CustomerStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
+import { usePermissions } from '../../hooks/usePermissions';
+import { extractApiError } from '../../utils/errorUtils';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
 type RouteT = RouteProp<CustomerStackParamList, 'CustomerDetail'>;
+type NavT = NativeStackNavigationProp<CustomerStackParamList, 'CustomerDetail'>;
 
 type LineItem = { grade_name: string; produce_name: string; quantity_bags: number; total_weight_kg: string; rate_per_kg: string; gross_amount: string; baardana_cost: string };
 type Payment = { payment_mode: string; amount: string; is_udhar: boolean; payment_date: string; payment_reference?: string };
@@ -25,6 +29,9 @@ const STATUS_COLOR: Record<string, string> = { DRAFT: '#f59e0b', AUTHORIZED: '#1
 
 export function CustomerDetailScreen() {
   const { params } = useRoute<RouteT>();
+  const navigation = useNavigation<NavT>();
+  const queryClient = useQueryClient();
+  const perms = usePermissions('CUSTOMERS');
   const [expandedKc, setExpandedKc] = useState<string | null>(null);
 
   const { data: history, isLoading, error } = useQuery<History>({
@@ -35,13 +42,33 @@ export function CustomerDetailScreen() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => customersApi.delete(params.customerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      navigation.goBack();
+    },
+    onError: (e: any) => Alert.alert('Error', extractApiError(e)),
+  });
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Customer',
+      `Are you sure you want to delete ${history?.customer?.name ?? 'this customer'}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
+      ],
+    );
+  };
+
   const toggle = (id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedKc(prev => (prev === id ? null : id));
   };
 
-  if (isLoading) return <ActivityIndicator style={{ flex: 1 }} size="large" color={colors.primary} />;
-  if (error || !history) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.error }}>Failed to load customer history</Text></View>;
+  if (isLoading) return <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />;
+  if (error || !history) return <View style={styles.centered}><Text style={styles.errorText}>Failed to load customer history</Text></View>;
 
   const { customer, outstanding_udhar, total_purchase_amount, total_kcs, kcs } = history;
 
@@ -56,6 +83,36 @@ export function CustomerDetailScreen() {
         {customer.phone ? <Text style={styles.phone}>📞 {customer.phone}</Text> : null}
         {customer.village ? <Text style={styles.phone}>🏘️ {customer.village}</Text> : null}
         {!customer.is_active && <View style={styles.inactiveBadge}><Text style={styles.inactiveText}>Inactive</Text></View>}
+
+        {/* Edit / Delete actions */}
+        {(perms.can_update || perms.can_delete) && (
+          <View style={styles.actionRow}>
+            {perms.can_update && (
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={() => navigation.navigate('CustomerEdit', {
+                  customerId: customer.id,
+                  name: customer.name,
+                  phone: customer.phone ?? '',
+                  address: customer.address ?? customer.village ?? '',
+                })}
+              >
+                <Text style={styles.editBtnText}>✏️  Edit</Text>
+              </TouchableOpacity>
+            )}
+            {perms.can_delete && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={handleDelete}
+                disabled={deleteMutation.isPending}
+              >
+                <Text style={styles.deleteBtnText}>
+                  {deleteMutation.isPending ? 'Deleting…' : '🗑  Delete'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
       {/* Outstanding Udhar — prominent red card */}
@@ -181,30 +238,30 @@ function FinRow({ label, value, highlight }: { label: string; value: string; hig
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing[4], gap: spacing[3], paddingBottom: spacing[10] },
-  profileCard: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[6], alignItems: 'center', ...shadow.sm },
+  profileCard: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[6], alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: spacing[3] },
   avatarText: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: colors.primary },
   name: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, color: colors.textPrimary },
   phone: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: spacing[1] },
-  inactiveBadge: { marginTop: spacing[2], backgroundColor: '#FEE2E2', paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderRadius: radius.full },
-  inactiveText: { color: colors.error, fontSize: typography.size.xs, fontWeight: typography.weight.medium },
-  udharCard: { backgroundColor: '#FEF2F2', borderRadius: radius.xl, padding: spacing[5], flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#FECACA' },
-  udharCardClear: { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
+  inactiveBadge: { marginTop: spacing[2], backgroundColor: colors.dangerBg, paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderRadius: radius.full },
+  inactiveText: { color: colors.danger, fontSize: typography.size.xs, fontWeight: typography.weight.medium },
+  udharCard: { backgroundColor: colors.dangerBg, borderRadius: radius.xl, padding: spacing[5], flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '30' },
+  udharCardClear: { backgroundColor: colors.successBg, borderColor: colors.success + '30' },
   udharLeft: { flex: 1 },
-  udharLabel: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#DC2626' },
-  udharSub: { fontSize: typography.size.xs, color: '#991B1B', marginTop: 2 },
-  udharAmount: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: '#DC2626' },
-  udharAmountClear: { color: '#16A34A' },
+  udharLabel: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.danger },
+  udharSub: { fontSize: typography.size.xs, color: colors.danger, marginTop: 2, opacity: 0.7 },
+  udharAmount: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: colors.danger },
+  udharAmountClear: { color: colors.success },
   statsRow: { flexDirection: 'row', gap: spacing[3] },
-  statBox: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[4], alignItems: 'center', ...shadow.sm },
+  statBox: { flex: 1, backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[4], alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   statValue: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.primary },
   statLabel: { fontSize: typography.size.xs, color: colors.textSecondary, marginTop: 2 },
   sectionTitle: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.textPrimary, marginTop: spacing[2] },
-  emptyBox: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing[8], alignItems: 'center' },
+  emptyBox: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[8], alignItems: 'center', borderWidth: 0.5, borderColor: colors.border },
   emptyText: { color: colors.textSecondary, fontSize: typography.size.sm },
-  kcCard: { backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden', ...shadow.sm },
+  kcCard: { backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   kcHeader: { padding: spacing[4], flexDirection: 'row', alignItems: 'flex-start' },
   kcHeaderLeft: { flex: 1 },
   kcHeaderRight: { alignItems: 'flex-end', marginLeft: spacing[3] },
@@ -214,32 +271,50 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 10, fontWeight: typography.weight.bold },
   kcDate: { fontSize: typography.size.xs, color: colors.textSecondary, marginTop: 2 },
   kcProduce: { fontSize: typography.size.xs, color: colors.textSecondary, marginTop: 2 },
-  kcNetLabel: { fontSize: 10, color: colors.textTertiary },
+  kcNetLabel: { fontSize: 10, color: colors.textMuted },
   kcNetAmount: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.textPrimary },
-  kcUdhar: { fontSize: 10, color: '#DC2626', marginTop: 2 },
-  expandIcon: { fontSize: 10, color: colors.textTertiary, marginTop: spacing[2] },
-  kcBody: { borderTopWidth: 1, borderTopColor: colors.border, padding: spacing[4], gap: spacing[3] },
-  finGrid: { backgroundColor: colors.background, borderRadius: radius.lg, padding: spacing[4], gap: spacing[2] },
+  kcUdhar: { fontSize: 10, color: colors.danger, marginTop: 2 },
+  expandIcon: { fontSize: 10, color: colors.textMuted, marginTop: spacing[2] },
+  kcBody: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, padding: spacing[4], gap: spacing[3] },
+  finGrid: { backgroundColor: colors.surfaceMuted, borderRadius: radius.lg, padding: spacing[4], gap: spacing[2] },
   finRow: { flexDirection: 'row', justifyContent: 'space-between' },
   finLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
   finLabelTotal: { fontWeight: typography.weight.bold, color: colors.textPrimary },
   finValue: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textPrimary },
-  finValueDeduction: { color: '#DC2626' },
+  finValueDeduction: { color: colors.danger },
   finValueTotal: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.primary },
-  finDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing[1] },
+  finDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing[1] },
   subHeader: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.textPrimary },
-  lineItem: { backgroundColor: colors.background, borderRadius: radius.lg, padding: spacing[3], gap: spacing[1] },
+  lineItem: { backgroundColor: colors.surfaceMuted, borderRadius: radius.lg, padding: spacing[3], gap: spacing[1] },
   liGrade: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.primary, marginBottom: spacing[1] },
   liRow: { flexDirection: 'row', justifyContent: 'space-between' },
   liLabel: { fontSize: typography.size.xs, color: colors.textSecondary },
   liVal: { fontSize: typography.size.xs, fontWeight: typography.weight.medium, color: colors.textPrimary },
-  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background, borderRadius: radius.lg, padding: spacing[3] },
-  paymentRowUdhar: { backgroundColor: '#FEF2F2' },
+  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radius.lg, padding: spacing[3] },
+  paymentRowUdhar: { backgroundColor: colors.dangerBg },
   paymentLeft: { flex: 1 },
   paymentMode: { fontSize: typography.size.sm, fontWeight: typography.weight.medium, color: colors.textPrimary },
   paymentDate: { fontSize: typography.size.xs, color: colors.textSecondary, marginTop: 2 },
-  paymentRef: { fontSize: typography.size.xs, color: colors.textTertiary },
+  paymentRef: { fontSize: typography.size.xs, color: colors.textMuted },
   paymentAmt: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.textPrimary },
-  paymentAmtUdhar: { color: '#DC2626' },
-  createdBy: { fontSize: typography.size.xs, color: colors.textTertiary, textAlign: 'right', marginTop: spacing[2] },
+  paymentAmtUdhar: { color: colors.danger },
+  createdBy: { fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'right', marginTop: spacing[2] },
+  actionRow: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[4], width: '100%' },
+  editBtn: {
+    flex: 1, height: 40, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+  },
+  editBtnText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.primary },
+  deleteBtn: {
+    flex: 1, height: 40, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.danger,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.dangerBg,
+  },
+  deleteBtnText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.danger },
+  flex1: { flex: 1 },
+  centered: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
+  errorText: { color: colors.danger, fontSize: typography.size.base },
 });

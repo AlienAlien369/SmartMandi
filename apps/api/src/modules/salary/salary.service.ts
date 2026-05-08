@@ -121,4 +121,72 @@ export class SalaryService {
     const [data, total] = await qb.getManyAndCount();
     return { data, meta: { total, page, limit } };
   }
+
+  /** Update notes on a salary entry (amount is immutable — tied to ledger). */
+  async update(id: string, notes: string, firmId: string): Promise<SalaryEntry> {
+    const entry = await this.salaryRepo.findOne({ where: { id, firm_id: firmId } });
+    if (!entry) throw new NotFoundException(`Salary entry ${id} not found`);
+    entry.notes = notes;
+    return this.salaryRepo.save(entry);
+  }
+
+  /** Delete a salary entry — writes reversal ledger entries to maintain audit trail. */
+  async delete(id: string, firmId: string, deletedBy: string): Promise<void> {
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+
+    try {
+      await qr.query(`SET LOCAL app.current_firm_id = '${firmId}'`);
+
+      const entry = await qr.manager.findOne(SalaryEntry, { where: { id, firm_id: firmId } });
+      if (!entry) throw new NotFoundException(`Salary entry ${id} not found`);
+
+      const groupId = uuidv4();
+      const reversalBase = `salary-reversal-${id}`;
+
+      // Reversal: FIRM_CASH CREDIT (reverses the debit)
+      const firmCashCredit = qr.manager.create(LedgerEntry, {
+        firm_id: firmId,
+        ledger_type: LedgerType.FIRM_CASH,
+        entry_type: EntryType.CREDIT,
+        amount: entry.amount,
+        balance_after: '0.00',
+        source_type: SourceType.REVERSAL,
+        source_id: id,
+        entry_group_id: groupId,
+        description: `Reversal of salary entry ${id}`,
+        idempotency_key: `${reversalBase}-firm-credit`,
+        created_by: deletedBy,
+        user_id: entry.user_id,
+      });
+
+      // Reversal: USER_SALARY DEBIT (reverses the credit)
+      const salaryDebit = qr.manager.create(LedgerEntry, {
+        firm_id: firmId,
+        ledger_type: LedgerType.USER_SALARY,
+        entry_type: EntryType.DEBIT,
+        amount: entry.amount,
+        balance_after: '0.00',
+        source_type: SourceType.REVERSAL,
+        source_id: id,
+        entry_group_id: groupId,
+        description: `Reversal of salary entry ${id}`,
+        idempotency_key: `${reversalBase}-salary-debit`,
+        created_by: deletedBy,
+        user_id: entry.user_id,
+      });
+
+      await qr.manager.save(LedgerEntry, [firmCashCredit, salaryDebit]);
+      await qr.manager.delete(SalaryEntry, { id, firm_id: firmId });
+      await qr.commitTransaction();
+
+      this.logger.log(`Salary entry ${id} deleted with reversals by ${deletedBy}`);
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
+  }
 }

@@ -69,7 +69,23 @@ export class TrucksService {
       .take(limit);
 
     if (filters.status) qb.andWhere('t.status = :status', { status: filters.status });
-    if (filters.date) qb.andWhere('t.sale_date = :date', { date: filters.date });
+
+    // Exact date takes priority over date range
+    if (filters.date) {
+      qb.andWhere('t.sale_date = :date', { date: filters.date });
+    } else {
+      if (filters.date_from) qb.andWhere('t.sale_date >= :date_from', { date_from: filters.date_from });
+      if (filters.date_to)   qb.andWhere('t.sale_date <= :date_to',   { date_to:   filters.date_to   });
+    }
+
+    if (filters.search) {
+      const term = `%${filters.search.trim()}%`;
+      qb.andWhere(
+        '(t.truck_number ILIKE :term OR t.driver_name ILIKE :term OR t.driver_phone ILIKE :term OR t.produce_name ILIKE :term)',
+        { term },
+      );
+    }
+
     if (filters.customer_id) qb.andWhere('t.customer_id = :cid', { cid: filters.customer_id });
 
     const [data, total] = await qb.getManyAndCount();
@@ -252,5 +268,27 @@ export class TrucksService {
     } finally {
       await qr.release();
     }
+  }
+
+  /** Delete a SCHEDULED truck (no financial records yet). */
+  async delete(id: string, firmId: string, userId: string): Promise<void> {
+    const truck = await this.truckRepo.findOne({ where: { id, firm_id: firmId } });
+    if (!truck) throw new NotFoundException(`Truck ${id} not found`);
+    if (truck.status !== TruckStatus.SCHEDULED) {
+      throw new BadRequestException(`Only SCHEDULED trucks can be deleted (current: ${truck.status})`);
+    }
+
+    await this.truckRepo.delete({ id, firm_id: firmId });
+
+    await this.auditService.log({
+      firm_id: firmId,
+      entity: EntityType.TRUCK,
+      entity_id: id,
+      action: AuditAction.DELETE,
+      old_value: truck as unknown as Record<string, unknown>,
+      changed_by: userId,
+    });
+
+    this.logger.log(`Truck ${id} deleted by ${userId}`);
   }
 }

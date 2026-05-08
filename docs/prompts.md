@@ -214,6 +214,72 @@ Tasks:
 
 ---
 
+## PROMPT 009 — Phase 9: CRUD Completion, Dynamic RBAC & Premium UI (COMPLETE)
+**Date:** Phase 9
+
+### Prompt Summary
+Complete CRUD on all modules, implement dynamic permission-based UI gating, enable SA role permission management, and redesign all key screens to premium quality.
+
+### Prompt Template
+```
+Context: docs/features.md Phases 1–8 complete.
+Phase 9 scope: CRUD completion + dynamic RBAC enforcement + SA role permissions + premium UI.
+
+1. RBAC enforcement:
+   - PermissionsGuard: queries role_module_permissions per request for non-FIRM_HEAD roles
+   - @RequirePermission(module, action) decorator on every write/delete endpoint
+   - usePermissions(module) hook on mobile → {can_create, can_read, can_update, can_delete}
+   - Gate Add/Edit/Delete buttons in UI — hide if permission not granted
+
+2. Trucks: DELETE /trucks/:id — SCHEDULED only; ARRIVED/CLOSED throw BadRequestException
+
+3. Salary: 
+   - PATCH /salary/:id — notes-only update (amount immutable by financial rules)
+   - DELETE /salary/:id — write reversal ledger entries (FIRM_CASH CREDIT + USER_SALARY DEBIT) before hard-deleting row
+
+4. Users:
+   - Rename deactivate() → delete(); is_active = false (soft-delete preserves FK integrity from salary/ledger/audit)
+   - findAll() must filter WHERE is_active = true so deleted users disappear immediately
+   - Mobile: full CRUD UI, alert says "Delete Team Member" not "Deactivate"
+
+5. SA role permissions:
+   - GET /super-admin/firms/:firmId/role-permissions?admin_token= → all role_module_permissions rows
+   - PUT /super-admin/firms/:firmId/role-permissions/:role?admin_token= → calls bulkSetRolePermissions()
+   - Mobile: "🔑 Permissions" tile on FirmCard → modal with role tabs + color-coded CRUD grid
+
+6. Premium UI redesign:
+   - SA Dashboard: deep navy (#050d1a), purple logo mark, 3 stat cards with color-coded tops, FirmCard with left accent bar + 5 action tiles
+   - Dashboard: date filters (Today/This Week/This Month)
+   - Trucks/KCs: matching premium filter chips + date filter showing correct data
+   - Ledger: date filter + balance card overflow fix
+
+Architecture rules:
+- FK constraints: salary_entries.user_id, ledger_entries.created_by, audit_logs.changed_by all REFERENCE users(id)
+  → User delete MUST be soft-delete; hard delete will violate FK constraints
+- Salary delete MUST write reversal entries — ledger is append-only
+- Truck delete guard: check truck.status === 'SCHEDULED' before deleting
+```
+
+### What It Generated
+- `PermissionsGuard` with FIRM_HEAD bypass + DB query for other roles
+- `@RequirePermission` decorator applied to all write/delete endpoints in Trucks, KC, Customers, Salary, Users controllers
+- `usePermissions(module)` hook + all screens wired with CRUD-gated buttons
+- `trucks.service.delete()` with SCHEDULED guard + audit log
+- `salary.service.update()` (notes-only) + `salary.service.delete()` with reversal ledger entries
+- `users.service.delete()` (soft-delete, is_active=false) + `users.service.findAll()` filtered by is_active=true
+- SA endpoints: `GET/PUT /super-admin/firms/:firmId/role-permissions/:role`
+- `superAdminApi.getRolePermissions()` + `superAdminApi.setRolePermissions()`
+- SADashboardScreen: full premium redesign (dark navy design system, action tiles, permissions modal, colored CRUD grid)
+- Mobile: all CRUD UI (SalaryScreen delete, UsersScreen edit/delete, TrucksScreen delete)
+- Terminology update: "Deactivate User" → "Delete Team Member" everywhere
+
+### Improvements
+- Stating exact FK constraint tables → agent chose soft-delete correctly (not hard-delete)
+- Specifying "reversal entries before delete" → salary delete maintains ledger integrity
+- Color-coding CRUD columns (C=green, R=blue, U=amber, D=red) in prompt → consistent SA permission grid
+
+---
+
 ## META: Prompt Engineering Lessons
 
 | Pattern | Result | Use When |
@@ -229,3 +295,5 @@ Tasks:
 | State "Register /:id/history BEFORE /:id" explicitly | Prevents NestJS UUID parsing 'history' as a param | History endpoints |
 | Separate SA and firm JWT concerns in prompt | Correct @Public() + admin_token pattern | Super Admin endpoints |
 | Specify "SA auto-grant all N modules on firm create" | Correct onboarding default behavior | Multi-tenant setup |
+| State FK constraints when asking for delete logic | Agent chooses soft vs hard delete correctly | Entity delete operations |
+| Specify "reversal entries before delete" for financial records | Audit trail preserved even after row deletion | Salary/ledger delete |

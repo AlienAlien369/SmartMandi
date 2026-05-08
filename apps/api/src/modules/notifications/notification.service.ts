@@ -5,12 +5,11 @@ import { DataSource } from 'typeorm';
 /**
  * NotificationService — sends FCM push notifications via firebase-admin.
  *
- * SETUP REQUIRED before production:
+ * SETUP:
  * 1. Create a Firebase project at https://console.firebase.google.com
- * 2. Go to Project Settings > Service Accounts > Generate new private key
- * 3. Save as apps/api/firebase-service-account.json (add to .gitignore!)
- * 4. Set FIREBASE_SERVICE_ACCOUNT_PATH env var to the path
- *    OR set FIREBASE_SERVICE_ACCOUNT_JSON env var to the JSON string
+ * 2. Project Settings > Service Accounts > Generate new private key
+ * 3. Set env var: FIREBASE_SERVICE_ACCOUNT_JSON=<contents of JSON file>
+ *    OR:         FIREBASE_SERVICE_ACCOUNT_PATH=<path to JSON file>
  */
 @Injectable()
 export class NotificationService {
@@ -38,21 +37,43 @@ export class NotificationService {
         const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
         credential = admin.credential.cert(serviceAccount);
       } else {
-        this.logger.warn(
-          'Firebase not configured — FCM notifications disabled. ' +
-          'Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH env var.',
-        );
+        this.logger.warn('Firebase not configured — FCM disabled. Set FIREBASE_SERVICE_ACCOUNT_JSON env var.');
         return;
       }
       admin.initializeApp({ credential });
       this.messaging = admin.messaging();
       this.logger.log('Firebase Admin initialized — FCM enabled');
     } catch (err) {
-      this.logger.warn(`Firebase init failed: ${err}. FCM notifications disabled.`);
+      this.logger.warn(`Firebase init failed: ${err}. FCM disabled.`);
     }
   }
 
-  /** Send push notification to all users in a firm (except the actor) */
+  /** Send KC authorized notification to ALL active firm members (including the authorizer) */
+  async sendKCAuthorized(opts: {
+    firmId: string;
+    authorizedBy: string;
+    kcNumber: string;
+    customerName: string;
+    netPayable: string;
+  }): Promise<void> {
+    if (!this.messaging) return;
+
+    const tokens = await this.getActiveTokens(opts.firmId);
+    if (!tokens.length) return;
+
+    const amount = parseFloat(opts.netPayable).toLocaleString('en-IN', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+
+    await this.sendToTokens(
+      tokens,
+      `KC #${opts.kcNumber} Authorized ✅`,
+      `${opts.customerName} — ₹${amount}`,
+      { type: 'KC_AUTHORIZED', kc_number: opts.kcNumber, firm_id: opts.firmId },
+    );
+  }
+
+  /** Generic: send to all active firm users except actor */
   async sendToFirmUsers(
     firmId: string,
     excludeUserId: string,
@@ -61,29 +82,72 @@ export class NotificationService {
     data: Record<string, string>,
   ): Promise<void> {
     if (!this.messaging) return;
+    const tokens = await this.getActiveTokens(firmId, excludeUserId);
+    if (!tokens.length) return;
+    await this.sendToTokens(tokens, title, body, data);
+  }
 
-    const tokens: Array<{ fcm_token: string }> = await this.dataSource.query(
+  /** Get FCM tokens for all active firm users. Optionally excludes one user. */
+  private async getActiveTokens(firmId: string, excludeUserId?: string): Promise<string[]> {
+    if (excludeUserId) {
+      const rows: Array<{ fcm_token: string }> = await this.dataSource.query(
+        `SELECT fcm_token FROM users
+         WHERE firm_id = $1 AND id != $2 AND is_active = true
+           AND fcm_token IS NOT NULL AND fcm_token != ''`,
+        [firmId, excludeUserId],
+      );
+      return rows.map(r => r.fcm_token);
+    }
+    const rows: Array<{ fcm_token: string }> = await this.dataSource.query(
       `SELECT fcm_token FROM users
-       WHERE firm_id = $1 AND id != $2 AND is_active = true AND fcm_token IS NOT NULL`,
-      [firmId, excludeUserId],
+       WHERE firm_id = $1 AND is_active = true
+         AND fcm_token IS NOT NULL AND fcm_token != ''`,
+      [firmId],
     );
+    return rows.map(r => r.fcm_token);
+  }
 
-    if (tokens.length === 0) return;
-
-    const fcmTokens = tokens.map(t => t.fcm_token);
-    this.logger.log(`Sending FCM to ${fcmTokens.length} users in firm ${firmId}`);
-
+  private async sendToTokens(
+    tokens: string[],
+    title: string,
+    body: string,
+    data: Record<string, string>,
+  ): Promise<void> {
     try {
       const response = await this.messaging.sendEachForMulticast({
-        tokens: fcmTokens,
+        tokens,
         notification: { title, body },
         data,
-        android: { priority: 'high' },
-        apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'kc_updates',
+            sound: 'default',
+            icon: 'ic_stat_notification',
+            color: '#1A6B3C',
+          },
+        },
+        apns: {
+          payload: { aps: { sound: 'default', badge: 1 } },
+        },
       });
-      this.logger.log(`FCM sent: ${response.successCount} success, ${response.failureCount} failed`);
+
+      this.logger.log(`FCM: ${response.successCount}/${tokens.length} delivered — "${title}"`);
+
+      // Remove stale tokens
+      response.responses.forEach((r: any, idx: number) => {
+        if (!r.success && r.error?.code === 'messaging/registration-token-not-registered') {
+          this.cleanupToken(tokens[idx]);
+        }
+      });
     } catch (err) {
-      this.logger.error(`FCM send failed: ${err}`);
+      this.logger.error(`FCM sendEachForMulticast failed: ${err}`);
     }
+  }
+
+  private async cleanupToken(token: string): Promise<void> {
+    try {
+      await this.dataSource.query(`UPDATE users SET fcm_token = NULL WHERE fcm_token = $1`, [token]);
+    } catch (_) {}
   }
 }

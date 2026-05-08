@@ -1,12 +1,21 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsDateString, IsNumberString, MaxLength,
+  IsString, IsNotEmpty, IsOptional, IsDateString, IsNumberString, MaxLength, IsEnum, IsUUID,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { FreightType } from '../../../common/enums';
 
+/** SALARY type requires user_id. INAM/KIRAYA/PARCHI require truck_id. */
 export class CreateSalaryEntryDto {
-  @ApiProperty({ description: 'User ID of the employee being paid' })
-  @IsString() @IsNotEmpty()
-  user_id: string;
+  @ApiPropertyOptional({ description: 'User ID of employee being paid (required for SALARY)' })
+  @ValidateIf(o => o.freight_type === FreightType.SALARY || !o.freight_type)
+  @IsUUID() @IsNotEmpty()
+  user_id?: string;
+
+  @ApiPropertyOptional({ description: 'Truck ID for driver payment (required for INAM/KIRAYA/PARCHI)' })
+  @ValidateIf(o => o.freight_type && o.freight_type !== FreightType.SALARY)
+  @IsUUID() @IsNotEmpty()
+  truck_id?: string;
 
   @ApiProperty({ example: '2025-01-15' })
   @IsDateString()
@@ -16,7 +25,11 @@ export class CreateSalaryEntryDto {
   @IsNumberString()
   amount: string;
 
-  @ApiPropertyOptional({ description: 'Notes or description for this salary entry' })
+  @ApiPropertyOptional({ enum: FreightType, default: FreightType.SALARY })
+  @IsOptional() @IsEnum(FreightType)
+  freight_type?: FreightType;
+
+  @ApiPropertyOptional({ description: 'Notes or description for this freight entry' })
   @IsOptional() @IsString() @MaxLength(500)
   notes?: string;
 }

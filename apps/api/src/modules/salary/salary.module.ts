@@ -4,12 +4,13 @@ import { SalaryEntry } from './salary-entry.entity';
 import { SalaryService } from './salary.service';
 import { SalaryController } from './salary.controller';
 import { LedgerEntry } from '../ledger/ledger-entry.entity';
+import { Truck } from '../trucks/truck.entity';
 import { EventStoreModule } from '../events/event-store.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SalaryEntry, LedgerEntry]),
+    TypeOrmModule.forFeature([SalaryEntry, LedgerEntry, Truck]),
     EventStoreModule,
     AuditModule,
   ],
@@ -18,3 +19,4 @@ import { AuditModule } from '../audit/audit.module';
   exports: [SalaryService],
 })
 export class SalaryModule {}
+

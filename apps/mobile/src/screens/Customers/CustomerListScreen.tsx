@@ -123,6 +123,7 @@ export function CustomerListScreen() {
         }
         renderItem={({ item }) => {
           const udhar   = Number(item.outstanding_udhar ?? 0);
+          const credit  = Number(item.credit_balance ?? 0);
           const kcCount = Number(item.kc_count ?? 0);
           const initials = item.name?.slice(0, 2).toUpperCase() ?? '?';
           return (
@@ -148,11 +149,16 @@ export function CustomerListScreen() {
                 )}
               </View>
 
-              {/* Right — udhar badge or arrow */}
+              {/* Right — credit badge / udhar badge / arrow */}
               <View style={styles.right}>
-                {udhar > 0 ? (
+                {credit > 0 ? (
+                  <View style={styles.creditBadge}>
+                    <Text style={styles.creditBadgeLabel}>{'Credit'}</Text>
+                    <Text style={styles.creditBadgeAmt}>{`\u20B9${credit.toLocaleString('en-IN')}`}</Text>
+                  </View>
+                ) : udhar > 0 ? (
                   <View style={styles.udharBadge}>
-                    <Text style={styles.udharLabel}>Udhar</Text>
+                    <Text style={styles.udharLabel}>{'Udhar'}</Text>
                     <Text style={styles.udharAmount}>{`\u20B9${udhar.toLocaleString('en-IN')}`}</Text>
                   </View>
                 ) : (
@@ -274,6 +280,13 @@ const styles = StyleSheet.create({
   },
   udharLabel: { fontSize: 9, fontWeight: typography.weight.semibold, color: colors.danger, textTransform: 'uppercase', letterSpacing: 0.4 },
   udharAmount: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.danger },
+  creditBadge: {
+    backgroundColor: '#dbeafe', borderRadius: radius.md,
+    paddingHorizontal: spacing[2], paddingVertical: spacing[1],
+    alignItems: 'flex-end', borderWidth: 1, borderColor: '#93c5fd',
+  },
+  creditBadgeLabel: { fontSize: 9, fontWeight: typography.weight.semibold, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.4 },
+  creditBadgeAmt: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: '#1d4ed8' },
   arrow: { fontSize: 20, color: colors.textMuted },
 
   fab: {

@@ -21,7 +21,7 @@ type NavT = NativeStackNavigationProp<CustomerStackParamList, 'CustomerDetail'>;
 type LineItem = { grade_name: string; produce_name: string; quantity_bags: number; total_weight_kg: string; rate_per_kg: string; gross_amount: string; baardana_cost: string };
 type Payment = { payment_mode: string; amount: string; is_udhar: boolean; payment_date: string; payment_reference?: string };
 type KC = { id: string; kc_number: string; sale_date: string; status: string; truck_number: string; produce_name: string; total_weight_kg: string; total_gross_amount: string; total_apmc_fee: string; total_commission: string; total_baardana_cost: string; total_net_payable: string; udhar_amount: number; line_items: LineItem[]; payments: Payment[]; created_by_name: string };
-type History = { customer: any; outstanding_udhar: number; total_purchase_amount: number; total_kcs: number; kcs: KC[] };
+type History = { customer: any; outstanding_udhar: number; credit_balance: number; total_purchase_amount: number; total_kcs: number; kcs: KC[] };
 
 const fmt = (n: any) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const fmtRs = (n: any) => `₹${fmt(n)}`;
@@ -70,7 +70,7 @@ export function CustomerDetailScreen() {
   if (isLoading) return <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />;
   if (error || !history) return <View style={styles.centered}><Text style={styles.errorText}>Failed to load customer history</Text></View>;
 
-  const { customer, outstanding_udhar, total_purchase_amount, total_kcs, kcs } = history;
+  const { customer, outstanding_udhar, credit_balance, total_purchase_amount, total_kcs, kcs } = history;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -115,16 +115,28 @@ export function CustomerDetailScreen() {
         )}
       </View>
 
-      {/* Outstanding Udhar — prominent red card */}
-      <View style={[styles.udharCard, outstanding_udhar === 0 && styles.udharCardClear]}>
-        <View style={styles.udharLeft}>
-          <Text style={styles.udharLabel}>Outstanding Udhar</Text>
-          <Text style={styles.udharSub}>{outstanding_udhar === 0 ? 'No pending credit' : 'Credit to be collected'}</Text>
+      {/* Balance card — 3 states: firm owes customer (credit), customer owes firm (udhar), settled */}
+      {credit_balance > 0 ? (
+        <View style={styles.creditCard}>
+          <View style={styles.udharLeft}>
+            <Text style={styles.creditLabel}>Firm Owes Customer</Text>
+            <Text style={styles.creditSub}>Customer has paid extra — refund or adjust next KC</Text>
+          </View>
+          <Text style={styles.creditAmount}>{fmtRs(credit_balance)}</Text>
         </View>
-        <Text style={[styles.udharAmount, outstanding_udhar === 0 && styles.udharAmountClear]}>
-          {fmtRs(outstanding_udhar)}
-        </Text>
-      </View>
+      ) : (
+        <View style={[styles.udharCard, outstanding_udhar === 0 && styles.udharCardClear]}>
+          <View style={styles.udharLeft}>
+            <Text style={[styles.udharLabel, outstanding_udhar === 0 && { color: colors.success }]}>Outstanding Udhar</Text>
+            <Text style={[styles.udharSub, outstanding_udhar === 0 && { color: colors.success }]}>
+              {outstanding_udhar === 0 ? 'No pending credit — fully settled' : 'Credit to be collected'}
+            </Text>
+          </View>
+          <Text style={[styles.udharAmount, outstanding_udhar === 0 && styles.udharAmountClear]}>
+            {fmtRs(outstanding_udhar)}
+          </Text>
+        </View>
+      )}
 
       {/* Summary stats */}
       <View style={styles.statsRow}>
@@ -247,13 +259,22 @@ const styles = StyleSheet.create({
   phone: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: spacing[1] },
   inactiveBadge: { marginTop: spacing[2], backgroundColor: colors.dangerBg, paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderRadius: radius.full },
   inactiveText: { color: colors.danger, fontSize: typography.size.xs, fontWeight: typography.weight.medium },
-  udharCard: { backgroundColor: colors.dangerBg, borderRadius: radius.xl, padding: spacing[5], flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '30' },
+  udharCard: { backgroundColor: colors.dangerBg, borderRadius: radius.xl, padding: spacing[5], flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '30', marginBottom: spacing[4] },
   udharCardClear: { backgroundColor: colors.successBg, borderColor: colors.success + '30' },
   udharLeft: { flex: 1 },
   udharLabel: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.danger },
   udharSub: { fontSize: typography.size.xs, color: colors.danger, marginTop: 2, opacity: 0.7 },
   udharAmount: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: colors.danger },
   udharAmountClear: { color: colors.success },
+  // Credit card — firm owes the customer (overpaid)
+  creditCard: {
+    backgroundColor: '#eff6ff', borderRadius: radius.xl, padding: spacing[5],
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#3b82f660', marginBottom: spacing[4],
+  },
+  creditLabel: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#1d4ed8' },
+  creditSub: { fontSize: typography.size.xs, color: '#3b82f6', marginTop: 2, opacity: 0.85 },
+  creditAmount: { fontSize: typography.size['2xl'], fontWeight: typography.weight.bold, color: '#1d4ed8' },
   statsRow: { flexDirection: 'row', gap: spacing[3] },
   statBox: { flex: 1, backgroundColor: colors.surfaceRaised, borderRadius: radius.xl, padding: spacing[4], alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, ...shadow.sm },
   statValue: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.primary },

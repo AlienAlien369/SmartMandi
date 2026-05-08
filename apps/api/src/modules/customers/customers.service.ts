@@ -54,8 +54,8 @@ export class CustomersService {
     const orderMap: Record<string, string> = {
       name_asc:  'c.name ASC',
       name_desc: 'c.name DESC',
-      udhar_desc: 'outstanding_udhar DESC NULLS LAST, c.name ASC',
-      udhar_asc:  'outstanding_udhar ASC NULLS LAST, c.name ASC',
+      udhar_desc: 'GREATEST(net_balance, 0) DESC NULLS LAST, c.name ASC',
+      udhar_asc:  'GREATEST(net_balance, 0) ASC NULLS LAST, c.name ASC',
       kc_desc:    'kc_count DESC NULLS LAST, c.name ASC',
     };
     const orderClause = orderMap[filters.sort_by ?? ''] ?? 'c.name ASC';
@@ -82,8 +82,7 @@ export class CustomersService {
                   AND kc2.firm_id = c.firm_id
                   AND kc2.status = 'AUTHORIZED'
                   AND kc2.cancelled_at IS NULL
-                  AND kc2.total_net_payable > COALESCE(paid.total_paid, 0)
-              ), 0) AS outstanding_udhar,
+              ), 0) AS net_balance,
               (
                 SELECT COUNT(*)::int
                 FROM kaccha_chitthas kc3
@@ -101,7 +100,8 @@ export class CustomersService {
     return {
       data: data.map((r: any) => ({
         ...r,
-        outstanding_udhar: Number(r.outstanding_udhar ?? 0),
+        outstanding_udhar: Number(r.net_balance ?? 0) > 0 ? Number(r.net_balance) : 0,
+        credit_balance: Number(r.net_balance ?? 0) < 0 ? Math.abs(Number(r.net_balance)) : 0,
         kc_count: Number(r.kc_count ?? 0),
       })),
       meta: { total: countRows[0]?.total ?? 0, page },
@@ -154,6 +154,7 @@ export class CustomersService {
   async getCustomerHistory(customerId: string, firmId: string): Promise<{
     customer: Customer;
     outstanding_udhar: number;
+    credit_balance: number;
     total_purchase_amount: number;
     total_kcs: number;
     kcs: any[];
@@ -218,17 +219,20 @@ export class CustomersService {
       return acc;
     }, {});
 
-    // Outstanding udhar = sum of (total_net_payable - total_paid) for AUTHORIZED KCs
-    // where total_paid < total_net_payable (i.e. firm still owes the customer)
-    const outstanding_udhar = kcs
+    // Net balance = sum of (net_payable - total_paid) across ALL AUTHORIZED KCs.
+    // Positive → customer still owes the firm (outstanding_udhar).
+    // Negative → firm owes the customer (credit_balance / advance paid).
+    const net_balance = kcs
       .filter((k: any) => k.status === 'AUTHORIZED')
       .reduce((sum: number, kc: any) => {
         const netPayable = Number(kc.total_net_payable || 0);
         const totalPaid = (pmtByKc[kc.id] || [])
           .reduce((s: number, p: any) => s + Number(p.amount), 0);
-        const unpaid = netPayable - totalPaid;
-        return sum + (unpaid > 0 ? unpaid : 0);
+        return sum + (netPayable - totalPaid);
       }, 0);
+
+    const outstanding_udhar = net_balance > 0 ? net_balance : 0;
+    const credit_balance = net_balance < 0 ? Math.abs(net_balance) : 0;
 
     const total_purchase_amount = kcs.reduce(
       (sum: number, kc: any) => sum + Number(kc.total_net_payable || 0), 0,
@@ -246,6 +250,7 @@ export class CustomersService {
     return {
       customer,
       outstanding_udhar,
+      credit_balance,
       total_purchase_amount,
       total_kcs: kcs.length,
       kcs: enrichedKcs,

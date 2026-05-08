@@ -37,6 +37,10 @@ const EMPTY_CONFIG = {
   rounding_strategy: 'ROUND_HALF_UP' as string,
   min_commission: '',
   max_commission: '',
+  baardana_provider: 'FIRM' as 'FIRM' | 'CUSTOMER',
+  default_bags: '1',
+  baardana_cost_per_unit: '',
+  rate_mode: 'PER_KG' as 'PER_KG' | 'PER_NAG',
 };
 
 export function SADashboardScreen() {
@@ -102,12 +106,14 @@ export function SADashboardScreen() {
     setLoadingConfig(true);
     setActiveModal('config');
     try {
-      const [apmcRes, commRes] = await Promise.all([
+      const [apmcRes, commRes, baardanaRes] = await Promise.all([
         superAdminApi.getApmcFeeConfig(firm.id, saToken),
         superAdminApi.getCommissionConfig(firm.id, saToken),
+        superAdminApi.getBaardanaConfig(firm.id, saToken),
       ]);
       const apmc = apmcRes.data as any;
       const comm = commRes.data as any;
+      const baard = baardanaRes.data as any;
       setConfigForm({
         fee_type: apmc.fee_type ?? 'PERCENTAGE',
         fee_value: apmc.fee_value != null ? String(apmc.fee_value) : '',
@@ -118,6 +124,10 @@ export function SADashboardScreen() {
         rounding_strategy: comm.rounding_strategy ?? 'ROUND_HALF_UP',
         min_commission: comm.min_commission != null ? String(comm.min_commission) : '',
         max_commission: comm.max_commission != null ? String(comm.max_commission) : '',
+        baardana_provider: baard.baardana_provider ?? 'FIRM',
+        default_bags: baard.default_bags != null ? String(baard.default_bags) : '1',
+        baardana_cost_per_unit: baard.cost_per_unit != null ? String(baard.cost_per_unit) : '',
+        rate_mode: baard.rate_mode ?? 'PER_KG',
       });
     } catch { setConfigForm(EMPTY_CONFIG); }
     finally { setLoadingConfig(false); }
@@ -212,9 +222,15 @@ export function SADashboardScreen() {
           min_commission: configForm.min_commission ? parseFloat(configForm.min_commission) : null,
           max_commission: configForm.max_commission ? parseFloat(configForm.max_commission) : null,
         }, saToken),
+        superAdminApi.setBaardanaConfig(selectedFirm.id, {
+          baardana_provider: configForm.baardana_provider,
+          default_bags: parseInt(configForm.default_bags, 10) || 1,
+          cost_per_unit: configForm.baardana_cost_per_unit ? parseFloat(configForm.baardana_cost_per_unit) : 0,
+          rate_mode: configForm.rate_mode,
+        }, saToken),
       ]);
     },
-    onSuccess: () => { closeModal(); Alert.alert('Saved', 'APMC fee & commission config updated.'); },
+    onSuccess: () => { closeModal(); Alert.alert('Saved', 'Rates, fees & baardana config updated.'); },
     onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to save config'),
   });
 
@@ -392,8 +408,8 @@ export function SADashboardScreen() {
 
       {/* ── Rates & Fees Modal ── */}
       <Modal visible={activeModal === 'config'} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.sheetContainer}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          {activeModal === 'config' && <View style={styles.sheetContainer}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
               <View style={styles.flex1}>
@@ -404,73 +420,152 @@ export function SADashboardScreen() {
             </View>
             {loadingConfig ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (
               <ScrollView contentContainerStyle={styles.formScroll}>
+                {/* ── APMC Fee ── */}
                 <View style={styles.configSection}>
                   <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>🏛️</Text>
+                    <Text style={styles.configSectionIcon}>{'🏛️'}</Text>
                     <View>
-                      <Text style={styles.configSectionTitle}>APMC Fee</Text>
-                      <Text style={styles.configHint}>Applied to every authorized KC</Text>
+                      <Text style={styles.configSectionTitle}>{'APMC Fee'}</Text>
+                      <Text style={styles.configHint}>{'Applied to every authorized KC'}</Text>
                     </View>
                   </View>
-                  <Text style={styles.fieldLabel}>Fee Type</Text>
+                  <Text style={styles.fieldLabel}>{'Fee Type'}</Text>
                   <View style={styles.chipRow}>
-                    {FEE_TYPES.map(t => (
-                      <TouchableOpacity key={t} style={[styles.chip, configForm.fee_type === t && styles.chipActive]} onPress={() => setConfigField('fee_type')(t)}>
-                        <Text style={[styles.chipText, configForm.fee_type === t && styles.chipTextActive]}>{t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn'}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {FEE_TYPES.map(t => {
+                      const feeActive = configForm.fee_type === t;
+                      const feeLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
+                      return (
+                        <TouchableOpacity key={t} style={feeActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('fee_type')(t)}>
+                          <Text style={feeActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{feeLabel}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <ConfigField label={configForm.fee_type === 'PERCENTAGE' ? 'Fee Rate (%)' : configForm.fee_type === 'FIXED_PER_KG' ? 'Fee per kg (₹)' : 'Fee per transaction (₹)'} value={configForm.fee_value} onChangeText={setConfigField('fee_value')} placeholder="e.g. 0.5" />
+                  <ConfigField
+                    label={configForm.fee_type === 'PERCENTAGE' ? 'Fee Rate (%)' : configForm.fee_type === 'FIXED_PER_KG' ? 'Fee per kg (₹)' : 'Fee per transaction (₹)'}
+                    value={configForm.fee_value}
+                    onChangeText={setConfigField('fee_value')}
+                    placeholder="e.g. 0.5"
+                  />
                   <View style={styles.configRow}>
-                    <View style={styles.configHalf}><ConfigField label="Min Fee (₹)" value={configForm.min_fee} onChangeText={setConfigField('min_fee')} placeholder="optional" /></View>
-                    <View style={styles.configHalf}><ConfigField label="Max Fee (₹)" value={configForm.max_fee} onChangeText={setConfigField('max_fee')} placeholder="optional" /></View>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Min Fee (₹)" value={configForm.min_fee} onChangeText={setConfigField('min_fee')} placeholder="optional" />
+                    </View>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Max Fee (₹)" value={configForm.max_fee} onChangeText={setConfigField('max_fee')} placeholder="optional" />
+                    </View>
                   </View>
                 </View>
 
+                {/* ── Commission ── */}
                 <View style={[styles.configSection, { marginTop: spacing[4] }]}>
                   <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>💰</Text>
+                    <Text style={styles.configSectionIcon}>{'💰'}</Text>
                     <View>
-                      <Text style={styles.configSectionTitle}>Commission</Text>
-                      <Text style={styles.configHint}>Firm commission earned per KC</Text>
+                      <Text style={styles.configSectionTitle}>{'Commission'}</Text>
+                      <Text style={styles.configHint}>{'Firm commission earned per KC'}</Text>
                     </View>
                   </View>
-                  <Text style={styles.fieldLabel}>Commission Type</Text>
+                  <Text style={styles.fieldLabel}>{'Commission Type'}</Text>
                   <View style={styles.chipRow}>
-                    {FEE_TYPES.map(t => (
-                      <TouchableOpacity key={t} style={[styles.chip, configForm.commission_type === t && styles.chipActive]} onPress={() => setConfigField('commission_type')(t)}>
-                        <Text style={[styles.chipText, configForm.commission_type === t && styles.chipTextActive]}>{t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn'}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {FEE_TYPES.map(t => {
+                      const commActive = configForm.commission_type === t;
+                      const commLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
+                      return (
+                        <TouchableOpacity key={t} style={commActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('commission_type')(t)}>
+                          <Text style={commActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{commLabel}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <ConfigField label={configForm.commission_type === 'PERCENTAGE' ? 'Commission Rate (%)' : configForm.commission_type === 'FIXED_PER_KG' ? 'Commission per kg (₹)' : 'Commission per transaction (₹)'} value={configForm.commission_value} onChangeText={setConfigField('commission_value')} placeholder="e.g. 2.0" />
+                  <ConfigField
+                    label={configForm.commission_type === 'PERCENTAGE' ? 'Commission Rate (%)' : configForm.commission_type === 'FIXED_PER_KG' ? 'Commission per kg (₹)' : 'Commission per transaction (₹)'}
+                    value={configForm.commission_value}
+                    onChangeText={setConfigField('commission_value')}
+                    placeholder="e.g. 2.0"
+                  />
                   <View style={styles.configRow}>
-                    <View style={styles.configHalf}><ConfigField label="Min (₹)" value={configForm.min_commission} onChangeText={setConfigField('min_commission')} placeholder="optional" /></View>
-                    <View style={styles.configHalf}><ConfigField label="Max (₹)" value={configForm.max_commission} onChangeText={setConfigField('max_commission')} placeholder="optional" /></View>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Min (₹)" value={configForm.min_commission} onChangeText={setConfigField('min_commission')} placeholder="optional" />
+                    </View>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Max (₹)" value={configForm.max_commission} onChangeText={setConfigField('max_commission')} placeholder="optional" />
+                    </View>
                   </View>
-                  <Text style={styles.fieldLabel}>Rounding Strategy</Text>
+                  <Text style={styles.fieldLabel}>{'Rounding Strategy'}</Text>
                   <View style={styles.chipRow}>
-                    {ROUNDING_OPTS.map(r => (
-                      <TouchableOpacity key={r} style={[styles.chip, configForm.rounding_strategy === r && styles.chipActive]} onPress={() => setConfigField('rounding_strategy')(r)}>
-                        <Text style={[styles.chipText, configForm.rounding_strategy === r && styles.chipTextActive]}>{r.replace('_', ' ')}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {ROUNDING_OPTS.map(r => {
+                      const rndActive = configForm.rounding_strategy === r;
+                      return (
+                        <TouchableOpacity key={r} style={rndActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('rounding_strategy')(r)}>
+                          <Text style={rndActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{r.replace(/_/g, ' ')}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
-                <TouchableOpacity style={[styles.primaryBtn, { marginTop: spacing[4] }, saveConfigMutation.isPending && { opacity: 0.6 }]} onPress={() => saveConfigMutation.mutate()} disabled={saveConfigMutation.isPending}>
-                  {saveConfigMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save Configuration</Text>}
+                {/* ── Baardana (Bags) ── */}
+                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
+                  <View style={styles.configSectionHeader}>
+                    <Text style={styles.configSectionIcon}>{'🛄'}</Text>
+                    <View>
+                      <Text style={styles.configSectionTitle}>{'Baardana (Bags)'}</Text>
+                      <Text style={styles.configHint}>{'Default bag source & count per KC line item'}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldLabel}>{'Bag Provider'}</Text>
+                  <View style={styles.chipRow}>
+                    {(['FIRM', 'CUSTOMER'] as const).map(p => {
+                      const provActive = configForm.baardana_provider === p;
+                      return (
+                        <TouchableOpacity key={p} style={provActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, baardana_provider: p }))}>
+                          <Text style={provActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{p === 'FIRM' ? '🏪 Firm' : '👤 Customer'}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.fieldLabel}>{'Rate Mode'}</Text>
+                  <View style={styles.chipRow}>
+                    {(['PER_KG', 'PER_NAG'] as const).map(m => {
+                      const rateActive = configForm.rate_mode === m;
+                      return (
+                        <TouchableOpacity key={m} style={rateActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, rate_mode: m }))}>
+                          <Text style={rateActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{m === 'PER_KG' ? '⚖️ Rate per KG' : '🎒 Rate per Nag'}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.configRow}>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Default Bags" value={configForm.default_bags} onChangeText={v => setConfigForm(p => ({ ...p, default_bags: v }))} placeholder="e.g. 1" keyboardType="numeric" />
+                    </View>
+                    <View style={styles.configHalf}>
+                      <ConfigField label="Cost per Bag (₹)" value={configForm.baardana_cost_per_unit} onChangeText={setConfigField('baardana_cost_per_unit')} placeholder="e.g. 5.00" keyboardType="decimal-pad" />
+                    </View>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={saveConfigMutation.isPending ? [styles.primaryBtn, { marginTop: spacing[4] }, { opacity: 0.6 }] : [styles.primaryBtn, { marginTop: spacing[4] }]}
+                  onPress={() => saveConfigMutation.mutate()}
+                  disabled={saveConfigMutation.isPending}
+                >
+                  {saveConfigMutation.isPending
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.primaryBtnText}>{'Save Configuration'}</Text>
+                  }
                 </TouchableOpacity>
               </ScrollView>
             )}
-          </View>
+          </View>}
         </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Create / Edit Firm Modal ── */}
       <Modal visible={activeModal === 'create' || activeModal === 'edit'} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.sheetContainer}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          {(activeModal === 'create' || activeModal === 'edit') && <View style={styles.sheetContainer}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{activeModal === 'create' ? 'New Firm' : 'Edit Firm'}</Text>
@@ -497,18 +592,18 @@ export function SADashboardScreen() {
                 {(createMutation.isPending || updateMutation.isPending) ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{activeModal === 'create' ? 'Create Firm' : 'Save Changes'}</Text>}
               </TouchableOpacity>
             </ScrollView>
-          </View>
+          </View>}
         </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Role Permissions Modal ── */}
       <Modal visible={activeModal === 'permissions'} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.sheetContainer}>
+        {activeModal === 'permissions' && <View style={styles.sheetContainer}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
             <View style={styles.flex1}>
               <Text style={styles.sheetTitle}>Role Permissions</Text>
-              <Text style={styles.sheetSub}>{selectedFirm?.name}</Text>
+              <Text style={styles.sheetSub}>{selectedFirm?.name ?? ''}</Text>
             </View>
             <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}><Text style={styles.sheetCloseText}>✕</Text></TouchableOpacity>
           </View>
@@ -516,7 +611,7 @@ export function SADashboardScreen() {
           {/* Role Tabs */}
           <View style={styles.roleTabBar}>
             {CONFIGURABLE_ROLES.map(r => (
-              <TouchableOpacity key={r} style={[styles.roleTab, selectedRole === r && styles.roleTabActive]} onPress={() => handleRoleSwitch(r)}>
+              <TouchableOpacity key={r} style={selectedRole === r ? [styles.roleTab, styles.roleTabActive] : styles.roleTab} onPress={() => handleRoleSwitch(r)}>
                 <View style={[styles.roleTabDot, { backgroundColor: r === 'AUTHORIZER' ? '#3b82f6' : r === 'OPERATOR' ? '#f59e0b' : '#64748b' }]} />
                 <Text style={[styles.roleTabText, selectedRole === r && styles.roleTabTextActive]}>{r}</Text>
               </TouchableOpacity>
@@ -562,11 +657,11 @@ export function SADashboardScreen() {
           {permsDirty && (
             <View style={styles.saveBar}>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => savePermsMutation.mutate()} disabled={savePermsMutation.isPending}>
-                {savePermsMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save {selectedRole} Permissions</Text>}
+                {savePermsMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{'Save ' + selectedRole + ' Permissions'}</Text>}
               </TouchableOpacity>
             </View>
           )}
-        </View>
+        </View>}
       </Modal>
     </View>
   );
@@ -629,11 +724,18 @@ function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, 
   );
 }
 
-function ConfigField({ label, value, onChangeText, placeholder }: any) {
+function ConfigField({ label, value, onChangeText, placeholder, keyboardType }: any) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput style={styles.fieldInput} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#94a3b8" keyboardType="decimal-pad" />
+      <Text style={styles.fieldLabel}>{String(label ?? '')}</Text>
+      <TextInput
+        style={styles.fieldInput}
+        value={value == null ? '' : String(value)}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#94a3b8"
+        keyboardType={keyboardType ?? 'decimal-pad'}
+      />
     </View>
   );
 }

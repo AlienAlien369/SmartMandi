@@ -4,10 +4,9 @@ import { Repository, DataSource } from 'typeorm';
 import Decimal from 'decimal.js';
 import { DashboardMetrics } from './dashboard-metrics.entity';
 import { SummarySheet } from './summary-sheet.entity';
-import { LedgerEntry } from '../ledger/ledger-entry.entity';
 import { KacchaChittha } from '../kaccha-chittha/entities/kaccha-chittha.entity';
 import { Truck } from '../trucks/truck.entity';
-import { LedgerType, TruckStatus, KCStatus } from '../../common/enums';
+import { TruckStatus, KCStatus } from '../../common/enums';
 
 @Injectable()
 export class DashboardService {
@@ -22,8 +21,6 @@ export class DashboardService {
     private readonly kcRepo: Repository<KacchaChittha>,
     @InjectRepository(Truck)
     private readonly truckRepo: Repository<Truck>,
-    @InjectRepository(LedgerEntry)
-    private readonly ledgerRepo: Repository<LedgerEntry>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -180,19 +177,25 @@ export class DashboardService {
     };
   }
 
-  /** Udhar = sum of CUSTOMER ledger CREDIT - DEBIT across all customers */
+  /** Udhar = net outstanding across all customers (from KC payments, not ledger) */
   private async computeUdhar(firmId: string): Promise<string> {
-    const result = await this.ledgerRepo
-      .createQueryBuilder('le')
-      .select(
-        `SUM(CASE WHEN le.entry_type = 'CREDIT' THEN le.amount::numeric ELSE -le.amount::numeric END)`,
-        'net',
-      )
-      .where('le.firm_id = :firmId', { firmId })
-      .andWhere('le.ledger_type = :type', { type: LedgerType.CUSTOMER })
-      .getRawOne();
+    // Compute directly from kaccha_chitthas + kc_payments so dashboard is accurate
+    // even when ledger_entries haven't been generated yet (e.g. seeded data).
+    const result = await this.dataSource.query(
+      `SELECT COALESCE(SUM(kc.total_net_payable - COALESCE(paid.total_paid, 0)), 0) AS net
+       FROM kaccha_chitthas kc
+       LEFT JOIN (
+         SELECT p.kc_id, SUM(p.amount) AS total_paid
+         FROM kc_payments p
+         GROUP BY p.kc_id
+       ) paid ON paid.kc_id = kc.id
+       WHERE kc.firm_id = $1
+         AND kc.status = 'AUTHORIZED'
+         AND kc.total_net_payable > COALESCE(paid.total_paid, 0)`,
+      [firmId],
+    );
 
-    const net = new Decimal(result?.net ?? '0');
+    const net = new Decimal(result?.[0]?.net ?? '0');
     return net.gt(0) ? net.toFixed(2) : '0.00';
   }
 

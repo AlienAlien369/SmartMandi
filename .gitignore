@@ -51,6 +51,10 @@ apps/mobile/android/*.keystore
 !apps/mobile/android/debug.keystore
 apps/mobile/android/app/release/
 *.jks
+# Firebase — contains API keys, never commit the real one
+# A placeholder is committed; replace with real file from Firebase Console
+# apps/mobile/android/app/google-services.json  (committed as placeholder)
+apps/mobile/ios/GoogleService-Info.plist
 
 # iOS
 apps/mobile/ios/build/

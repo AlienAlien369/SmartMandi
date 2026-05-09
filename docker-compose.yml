@@ -47,6 +47,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: dev-secret-change-in-production-minimum-32-chars
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
     volumes:
       - ./apps/api/src:/app/src
     depends_on:

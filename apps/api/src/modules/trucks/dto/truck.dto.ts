@@ -1,7 +1,10 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString,
-  IsUUID, IsNumberString, MinLength, MaxLength,
+  Matches, IsNumberString, MinLength, MaxLength,
 } from 'class-validator';
+
+const UUID_MSG = { message: '$property must be a UUID' };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TruckStatus } from '../../../common/enums';
 
@@ -31,11 +34,11 @@ export class CreateTruckDto {
   estimated_weight_kg?: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUUID()
+  @IsOptional() @Matches(UUID_RE, UUID_MSG)
   customer_id?: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUUID()
+  @IsOptional() @Matches(UUID_RE, UUID_MSG)
   commission_config_id?: string;
 
   @ApiPropertyOptional()
@@ -89,7 +92,7 @@ export class TruckFiltersDto {
   search?: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUUID()
+  @IsOptional() @Matches(UUID_RE, UUID_MSG)
   customer_id?: string;
 
   @ApiPropertyOptional({ example: '1' })

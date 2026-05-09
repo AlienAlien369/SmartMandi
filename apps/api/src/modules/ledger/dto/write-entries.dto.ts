@@ -2,12 +2,15 @@ import {
   IsEnum,
   IsNotEmpty,
   IsString,
-  IsUUID,
+  Matches,
   IsOptional,
   IsArray,
   ValidateNested,
   ArrayMinSize,
 } from 'class-validator';
+
+const UUID_MSG = { message: '$property must be a UUID' };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { LedgerType, EntryType, SourceType } from '../../../common/enums';
@@ -32,25 +35,25 @@ export class LedgerEntryDto {
   source_type: SourceType;
 
   @ApiProperty()
-  @IsUUID()
+  @Matches(UUID_RE, UUID_MSG)
   source_id: string;
 
   @ApiProperty()
-  @IsUUID()
+  @Matches(UUID_RE, UUID_MSG)
   entry_group_id: string;
 
   @ApiProperty({ required: false })
-  @IsUUID()
+  @Matches(UUID_RE, UUID_MSG)
   @IsOptional()
   customer_id?: string;
 
   @ApiProperty({ required: false })
-  @IsUUID()
+  @Matches(UUID_RE, UUID_MSG)
   @IsOptional()
   truck_id?: string;
 
   @ApiProperty({ required: false })
-  @IsUUID()
+  @Matches(UUID_RE, UUID_MSG)
   @IsOptional()
   user_id?: string;
 

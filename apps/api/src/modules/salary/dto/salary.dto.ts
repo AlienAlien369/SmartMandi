@@ -1,7 +1,10 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsDateString, IsNumberString, MaxLength, IsEnum, IsUUID,
+  IsString, IsNotEmpty, IsOptional, IsDateString, IsNumberString, MaxLength, IsEnum, Matches,
   ValidateIf,
 } from 'class-validator';
+
+const UUID_MSG = { message: '$property must be a UUID' };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FreightType } from '../../../common/enums';
 
@@ -9,12 +12,12 @@ import { FreightType } from '../../../common/enums';
 export class CreateSalaryEntryDto {
   @ApiPropertyOptional({ description: 'User ID of employee being paid (required for SALARY)' })
   @ValidateIf(o => o.freight_type === FreightType.SALARY || !o.freight_type)
-  @IsUUID() @IsNotEmpty()
+  @Matches(UUID_RE, UUID_MSG) @IsNotEmpty()
   user_id?: string;
 
   @ApiPropertyOptional({ description: 'Truck ID for driver payment (required for INAM/KIRAYA/PARCHI)' })
   @ValidateIf(o => o.freight_type && o.freight_type !== FreightType.SALARY)
-  @IsUUID() @IsNotEmpty()
+  @Matches(UUID_RE, UUID_MSG) @IsNotEmpty()
   truck_id?: string;
 
   @ApiProperty({ example: '2025-01-15' })

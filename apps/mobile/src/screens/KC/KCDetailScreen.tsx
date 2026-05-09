@@ -29,7 +29,10 @@ export function KCDetailScreen() {
   const [editMode, setEditMode] = useState(false);
   const [editItems, setEditItems] = useState<Array<{
     grade_config_id: string; grade_label: string;
-    quantity_bags: string; total_weight_kg: string; rate_per_kg: string;
+    quantity_bags: string; total_weight_kg: string;
+    rate_per_kg: string;   // used for PER_KG mode
+    rate_per_nag: string;  // used for PER_NAG mode
+    rate_mode: 'PER_KG' | 'PER_NAG';
     baardana_source: 'FIRM' | 'CUSTOMER'; baardana_quantity: string;
   }>>([]);
   const [showGradePicker, setShowGradePicker] = useState<number | null>(null);
@@ -50,6 +53,16 @@ export function KCDetailScreen() {
     },
   });
   const grades = gradesData ?? [];
+
+  const { data: baardanaConfig } = useQuery({
+    queryKey: ['baardana-config'],
+    queryFn: async () => {
+      const { data } = await configApi.getBaardanaConfig();
+      return data as { rate_mode: 'PER_KG' | 'PER_NAG'; baardana_provider: 'FIRM' | 'CUSTOMER'; default_bags: number };
+    },
+    staleTime: 300000,
+  });
+  const firmRateMode = baardanaConfig?.rate_mode ?? 'PER_KG';
 
   const authorizeMutation = useMutation({
     mutationFn: () => kcsApi.authorize(params.kcId, {}),
@@ -77,15 +90,31 @@ export function KCDetailScreen() {
 
   const saveEditMutation = useMutation({
     mutationFn: () => {
-      const line_items = editItems.map((it, idx) => ({
-        grade_config_id: it.grade_config_id,
-        quantity_bags: parseInt(it.quantity_bags, 10) || 1,
-        total_weight_kg: parseFloat(it.total_weight_kg) || 0,
-        rate_per_kg: parseFloat(it.rate_per_kg) || 0,
-        baardana_source: it.baardana_source,
-        baardana_quantity: parseInt(it.baardana_quantity, 10) || 0,
-        sort_order: idx,
-      }));
+      const line_items = editItems.map((it, idx) => {
+        if (it.rate_mode === 'PER_NAG') {
+          return {
+            grade_config_id: it.grade_config_id,
+            quantity_bags: parseInt(it.quantity_bags, 10) || 1,
+            weight_per_bag_kg: undefined,
+            total_weight_kg: 0,
+            rate_per_kg: parseFloat(it.rate_per_nag) || 0,
+            baardana_source: it.baardana_source,
+            baardana_quantity: parseInt(it.baardana_quantity, 10) || 0,
+            rate_mode: 'PER_NAG' as const,
+            sort_order: idx,
+          };
+        }
+        return {
+          grade_config_id: it.grade_config_id,
+          quantity_bags: parseInt(it.quantity_bags, 10) || 1,
+          total_weight_kg: parseFloat(it.total_weight_kg) || 0,
+          rate_per_kg: parseFloat(it.rate_per_kg) || 0,
+          baardana_source: it.baardana_source,
+          baardana_quantity: parseInt(it.baardana_quantity, 10) || 0,
+          rate_mode: 'PER_KG' as const,
+          sort_order: idx,
+        };
+      });
       return kcsApi.updateItems(params.kcId, { line_items });
     },
     onSuccess: () => {
@@ -105,15 +134,20 @@ export function KCDetailScreen() {
 
   const handleStartEdit = () => {
     if (!kc?.line_items) return;
-    setEditItems(kc.line_items.map(item => ({
-      grade_config_id: item.grade_config_id ?? item.id,
-      grade_label: grades.find(g => g.id === item.grade_config_id)?.grade_label ?? item.grade_code ?? '—',
-      quantity_bags: String(item.quantity_bags),
-      total_weight_kg: String(item.weight_kg ?? item.total_weight_kg ?? ''),
-      rate_per_kg: String(item.rate_per_kg),
-      baardana_source: 'FIRM' as const,
-      baardana_quantity: '0',
-    })));
+    setEditItems(kc.line_items.map(item => {
+      const mode = item.rate_mode ?? firmRateMode;
+      return {
+        grade_config_id: item.grade_config_id ?? item.id,
+        grade_label: grades.find(g => g.id === item.grade_config_id)?.grade_label ?? item.grade_code ?? '—',
+        quantity_bags: String(item.quantity_bags),
+        total_weight_kg: String(item.weight_kg ?? item.total_weight_kg ?? ''),
+        rate_per_kg: mode === 'PER_KG' ? String(item.rate_per_kg) : '',
+        rate_per_nag: mode === 'PER_NAG' ? String(item.rate_per_kg) : '', // backend stores rate_per_nag in rate_per_kg column
+        rate_mode: mode,
+        baardana_source: (item.baardana_source as 'FIRM' | 'CUSTOMER') ?? 'FIRM',
+        baardana_quantity: String(item.baardana_quantity ?? 0),
+      };
+    }));
     setEditMode(true);
   };
 
@@ -171,10 +205,15 @@ export function KCDetailScreen() {
             {kc.line_items.map((item, i) => {
               const gradeLabel = grades.find(g => g.id === item.grade_config_id)?.grade_label ?? item.grade_code ?? '—';
               const weight = item.total_weight_kg ?? item.weight_kg ?? '0';
+              const isNag = item.rate_mode === 'PER_NAG';
               return (
                 <View key={item.id ?? i} style={styles.lineItem}>
                   <Text style={styles.lineItemTitle}>{item.produce_name ?? gradeLabel}</Text>
-                  <Text style={styles.lineItemDetail}>{item.quantity_bags} bags · {weight} kg · ₹{item.rate_per_kg}/kg</Text>
+                  {isNag ? (
+                    <Text style={styles.lineItemDetail}>{item.quantity_bags} nag · ₹{item.rate_per_kg}/nag</Text>
+                  ) : (
+                    <Text style={styles.lineItemDetail}>{item.quantity_bags} bags · {weight} kg · ₹{item.rate_per_kg}/kg</Text>
+                  )}
                   <Text style={styles.lineItemGross}>Gross: ₹{item.gross_amount}</Text>
                 </View>
               );
@@ -216,14 +255,23 @@ export function KCDetailScreen() {
                     <Text style={styles.editItemLabel}>Bags</Text>
                     <TextInput style={styles.editInput} value={item.quantity_bags} onChangeText={v => setEditField(i, 'quantity_bags', v)} keyboardType="number-pad" />
                   </View>
-                  <View style={styles.flex1}>
-                    <Text style={styles.editItemLabel}>Weight (kg)</Text>
-                    <TextInput style={styles.editInput} value={item.total_weight_kg} onChangeText={v => setEditField(i, 'total_weight_kg', v)} keyboardType="decimal-pad" />
-                  </View>
-                  <View style={styles.flex1}>
-                    <Text style={styles.editItemLabel}>Rate/kg</Text>
-                    <TextInput style={styles.editInput} value={item.rate_per_kg} onChangeText={v => setEditField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" />
-                  </View>
+                  {item.rate_mode === 'PER_NAG' ? (
+                    <View style={[styles.flex1, { flex: 2 }]}>
+                      <Text style={styles.editItemLabel}>Rate/Nag (₹)</Text>
+                      <TextInput style={styles.editInput} value={item.rate_per_nag} onChangeText={v => setEditField(i, 'rate_per_nag', v)} keyboardType="decimal-pad" />
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.flex1}>
+                        <Text style={styles.editItemLabel}>Weight (kg)</Text>
+                        <TextInput style={styles.editInput} value={item.total_weight_kg} onChangeText={v => setEditField(i, 'total_weight_kg', v)} keyboardType="decimal-pad" />
+                      </View>
+                      <View style={styles.flex1}>
+                        <Text style={styles.editItemLabel}>Rate/kg</Text>
+                        <TextInput style={styles.editInput} value={item.rate_per_kg} onChangeText={v => setEditField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" />
+                      </View>
+                    </>
+                  )}
                 </View>
               </View>
             ))}

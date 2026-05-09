@@ -62,15 +62,28 @@ export async function registerFcmToken(): Promise<string | null> {
 
 /**
  * Set up foreground notification handler. Call once in App.tsx.
+ * Shows a Toast banner (like WhatsApp heads-up) when a notification arrives
+ * while the app is in the foreground.
  * Returns an unsubscribe function.
  */
 export async function setupForegroundHandler(): Promise<() => void> {
   const m = await getMessaging();
   if (!m) return () => {};
   return m.onMessage(async (remoteMessage: any) => {
-    // React Native Firebase shows heads-up in background automatically.
-    // For foreground, we just log — the app is already open.
-    console.log('FCM foreground message:', remoteMessage.notification?.title);
+    const title = remoteMessage.notification?.title ?? 'Smart Mandi';
+    const body  = remoteMessage.notification?.body  ?? '';
+    const type  = remoteMessage.data?.type;
+
+    // Dynamic import to avoid circular dep
+    const Toast = require('react-native-toast-message').default;
+    Toast.show({
+      type: type === 'KC_AUTHORIZED' ? 'success' : 'info',
+      text1: title,
+      text2: body,
+      position: 'top',
+      visibilityTime: 5000,
+      topOffset: 50,
+    });
   });
 }
 
@@ -102,4 +115,18 @@ export async function onNotificationOpenedApp(
   return m.onNotificationOpenedApp((remoteMessage: any) => {
     if (remoteMessage?.data) callback(remoteMessage.data);
   });
+}
+
+/**
+ * Register background/quit-state handler.
+ * MUST be called at module level (outside any component) in App.tsx.
+ */
+export function registerBackgroundMessageHandler(): void {
+  try {
+    const firebaseMessaging = require('@react-native-firebase/messaging').default;
+    firebaseMessaging().setBackgroundMessageHandler(async (_remoteMessage: any) => {
+      // FCM shows the OS notification automatically in background/quit state.
+      // No action required here unless you need background data processing.
+    });
+  } catch (_) {}
 }

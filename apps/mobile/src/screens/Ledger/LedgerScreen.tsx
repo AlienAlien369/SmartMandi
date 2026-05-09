@@ -14,13 +14,13 @@ const TYPE_LABELS: Record<LedgerType, string> = {
   CUSTOMER: 'Customer',
   TRUCK: 'Truck',
   FIRM_CASH: 'Firm Cash',
-  USER_SALARY: 'Salary',
+  USER_SALARY: 'Freight',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
   KC_AUTHORIZATION: 'KC Authorization',
   PAYMENT_RECEIVED: 'Payment Received',
-  SALARY_PAID: 'Salary',
+  SALARY_PAID: 'Freight',
   INAM_PAID: 'Inam',
   REVERSAL: 'Reversal',
   MANUAL_ADJUSTMENT: 'Adjustment',

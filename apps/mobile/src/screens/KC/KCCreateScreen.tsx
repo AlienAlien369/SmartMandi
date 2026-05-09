@@ -17,10 +17,12 @@ interface LineItemForm {
   grade_config_id: string;
   grade_label: string;
   quantity_bags: string;
-  weight_per_bag_kg: string;  // user input — weight of one bag
-  rate_per_kg: string;
+  weight_per_bag_kg: string;
+  rate_per_kg: string;    // used for PER_KG mode
+  rate_per_nag: string;   // used for PER_NAG mode
   baardana_source: 'FIRM' | 'CUSTOMER';
   baardana_quantity: string;
+  rate_mode: 'PER_KG' | 'PER_NAG';
 }
 
 interface PaymentMode { id: string; mode_code: string; mode_label: string; }
@@ -97,10 +99,19 @@ export function KCCreateScreen() {
         if (m.mode_code?.toUpperCase() === 'CASH') setCashModeId(m.id);
         else if (m.mode_code?.toUpperCase() === 'UPI') setUpiModeId(m.id);
         else if (m.mode_code?.toUpperCase() === 'UDHAR') setUdharModeId(m.id);
-      });
-      return modes;
+      });      return modes;
     },
     staleTime: 60000,
+  });
+
+  // Fetch baardana config to pre-fill line item defaults
+  const { data: baardanaConfig } = useQuery({
+    queryKey: ['baardana-config'],
+    queryFn: async () => {
+      const { data } = await configApi.getBaardanaConfig();
+      return data as { baardana_provider: 'FIRM' | 'CUSTOMER'; default_bags: number; cost_per_unit: string | null; rate_mode: 'PER_KG' | 'PER_NAG' };
+    },
+    staleTime: 300000, // cache 5 min — rarely changes
   });
 
   const grades = gradesData ?? [];
@@ -129,17 +140,24 @@ export function KCCreateScreen() {
   const estimatedGross = useMemo(() => {
     return lineItems.reduce((sum, it) => {
       const bags = parseFloat(it.quantity_bags) || 0;
+      if (it.rate_mode === 'PER_NAG') {
+        return sum + bags * (parseFloat(it.rate_per_nag) || 0);
+      }
       const wpb = parseFloat(it.weight_per_bag_kg) || 0;
       const r = parseFloat(it.rate_per_kg) || 0;
       return sum + (bags * wpb) * r;
     }, 0);
   }, [lineItems]);
 
-  const udharAmount = useMemo(() => {
+  // Payment balance: positive = udhar owed, negative = overpayment
+  const paymentBalance = useMemo(() => {
     const cash = parseFloat(cashAmount) || 0;
     const upi = parseFloat(upiAmount) || 0;
-    return Math.max(0, estimatedGross - cash - upi);
+    return estimatedGross - cash - upi;
   }, [estimatedGross, cashAmount, upiAmount]);
+
+  const udharAmount = Math.max(0, paymentBalance);
+  const overpaidAmount = Math.max(0, -paymentBalance);
 
   // ── Add customer mutation ───────────────────────────────────────────────────
   const addCustomerMutation = useMutation({
@@ -163,14 +181,19 @@ export function KCCreateScreen() {
   // ── Line item helpers ───────────────────────────────────────────────────────
   const addLineItem = () => {
     if (grades.length === 0) return Alert.alert('No Grades', 'No grade configs found.');
+    const defaultSource = baardanaConfig?.baardana_provider ?? 'FIRM';
+    const defaultBags = baardanaConfig?.default_bags != null ? String(baardanaConfig.default_bags) : '0';
+    const defaultRateMode = baardanaConfig?.rate_mode ?? 'PER_KG';
     setLineItems(prev => [...prev, {
       grade_config_id: grades[0].id,
       grade_label: grades[0].grade_label,
       quantity_bags: '',
       weight_per_bag_kg: '',
       rate_per_kg: '',
-      baardana_source: 'FIRM',
-      baardana_quantity: '0',
+      rate_per_nag: '',
+      baardana_source: defaultSource,
+      baardana_quantity: defaultBags,
+      rate_mode: defaultRateMode,
     }]);
   };
 
@@ -191,8 +214,12 @@ export function KCCreateScreen() {
       if (!customerId.trim()) throw new Error('Please select a customer');
       if (lineItems.length === 0) throw new Error('Add at least one line item');
       for (const it of lineItems) {
-        if (!it.weight_per_bag_kg || !it.rate_per_kg) throw new Error('Fill weight per bag and rate for all items');
         if (!it.quantity_bags) throw new Error('Fill bag count for all items');
+        if (it.rate_mode === 'PER_NAG') {
+          if (!it.rate_per_nag) throw new Error('Fill rate per nag for all items');
+        } else {
+          if (!it.weight_per_bag_kg || !it.rate_per_kg) throw new Error('Fill weight per bag and rate for all items');
+        }
       }
 
       const idempKey = `kc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -201,6 +228,19 @@ export function KCCreateScreen() {
         sale_date: saleDate,
         line_items: lineItems.map((li, idx) => {
           const bags = parseInt(li.quantity_bags, 10) || 1;
+          if (li.rate_mode === 'PER_NAG') {
+            return {
+              grade_config_id: li.grade_config_id,
+              quantity_bags: bags,
+              weight_per_bag_kg: undefined,
+              total_weight_kg: 0,
+              rate_per_kg: parseFloat(li.rate_per_nag) || 0,
+              baardana_source: li.baardana_source,
+              baardana_quantity: parseInt(li.baardana_quantity, 10) || 0,
+              rate_mode: 'PER_NAG' as const,
+              sort_order: idx,
+            };
+          }
           const wpb = parseFloat(li.weight_per_bag_kg) || 0;
           return {
             grade_config_id: li.grade_config_id,
@@ -210,6 +250,7 @@ export function KCCreateScreen() {
             rate_per_kg: parseFloat(li.rate_per_kg) || 0,
             baardana_source: li.baardana_source,
             baardana_quantity: parseInt(li.baardana_quantity, 10) || 0,
+            rate_mode: 'PER_KG' as const,
             sort_order: idx,
           };
         }),
@@ -224,7 +265,8 @@ export function KCCreateScreen() {
       const today = new Date().toISOString().slice(0, 10);
       const cashAmt = parseFloat(cashAmount) || 0;
       const upiAmt = parseFloat(upiAmount) || 0;
-      const udharAmt = udharAmount;
+      const balance = estimatedGross - cashAmt - upiAmt;
+      const udharAmt = Math.max(0, balance); // only positive = actual udhar
 
       if (cashAmt > 0 && cashModeId) {
         await kcsApi.addPayment(kcId, {
@@ -242,6 +284,7 @@ export function KCCreateScreen() {
           is_udhar: false,
         }).catch(() => {});
       }
+      // Only record udhar if customer hasn't overpaid
       if (udharAmt > 0 && udharModeId) {
         await kcsApi.addPayment(kcId, {
           payment_mode_id: udharModeId, amount: udharAmt,
@@ -388,6 +431,24 @@ export function KCCreateScreen() {
             )}
           </View>
 
+          {/* ── Rate Mode Banner (firm-configured, locked by SA) ── */}
+          {baardanaConfig && (
+            <View style={[styles.rateModeBar, baardanaConfig.rate_mode === 'PER_NAG' ? styles.rateModeBarNag : styles.rateModeBarKg]}>
+              <Text style={styles.rateModeBarIcon}>{baardanaConfig.rate_mode === 'PER_NAG' ? '🎒' : '⚖️'}</Text>
+              <View style={styles.flex1}>
+                <Text style={styles.rateModeBarTitle}>
+                  {baardanaConfig.rate_mode === 'PER_NAG' ? 'Rate per Nag (Bardana)' : 'Rate per KG'}
+                </Text>
+                <Text style={styles.rateModeBarHint}>
+                  {baardanaConfig.rate_mode === 'PER_NAG'
+                    ? 'Gross = Bags × Rate/nag — no weight required'
+                    : 'Gross = Bags × Weight × Rate/kg'}
+                </Text>
+              </View>
+              <Text style={styles.rateModeBarLock}>🔒 SA</Text>
+            </View>
+          )}
+
           {/* ── Line items ──────────────────────────────────────── */}
           {lineItems.map((item, i) => (
             <View key={i} style={styles.card}>
@@ -415,17 +476,38 @@ export function KCCreateScreen() {
               )}
 
               <FormField label="Bags *" value={item.quantity_bags} onChangeText={v => setItemField(i, 'quantity_bags', v)} keyboardType="number-pad" placeholder="Number of bags" />
-              <FormField label="Weight per Bag (kg) *" value={item.weight_per_bag_kg} onChangeText={v => setItemField(i, 'weight_per_bag_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 50.5" />
-              {/* Auto-calculated total weight */}
-              {!!item.quantity_bags && !!item.weight_per_bag_kg && (
-                <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Total Weight</Text>
-                  <Text style={styles.calcValue}>
-                    {((parseFloat(item.quantity_bags) || 0) * (parseFloat(item.weight_per_bag_kg) || 0)).toFixed(2)} kg
-                  </Text>
-                </View>
+
+              {item.rate_mode === 'PER_NAG' ? (
+                <>
+                  {/* PER_NAG: only rate per bag, no weight needed */}
+                  <View style={styles.rateModeTag}>
+                    <Text style={styles.rateModeTagText}>🎒 Rate per Nag mode</Text>
+                  </View>
+                  <FormField label="Rate per Nag (₹) *" value={item.rate_per_nag} onChangeText={v => setItemField(i, 'rate_per_nag', v)} keyboardType="decimal-pad" placeholder="e.g. 500" />
+                  {!!item.quantity_bags && !!item.rate_per_nag && (
+                    <View style={styles.calcRow}>
+                      <Text style={styles.calcLabel}>Est. Gross</Text>
+                      <Text style={styles.calcValue}>
+                        ₹{((parseFloat(item.quantity_bags) || 0) * (parseFloat(item.rate_per_nag) || 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* PER_KG: weight + rate per kg */}
+                  <FormField label="Weight per Bag (kg) *" value={item.weight_per_bag_kg} onChangeText={v => setItemField(i, 'weight_per_bag_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 50.5" />
+                  {!!item.quantity_bags && !!item.weight_per_bag_kg && (
+                    <View style={styles.calcRow}>
+                      <Text style={styles.calcLabel}>Total Weight</Text>
+                      <Text style={styles.calcValue}>
+                        {((parseFloat(item.quantity_bags) || 0) * (parseFloat(item.weight_per_bag_kg) || 0)).toFixed(2)} kg
+                      </Text>
+                    </View>
+                  )}
+                  <FormField label="Rate per kg (₹) *" value={item.rate_per_kg} onChangeText={v => setItemField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 25.50" />
+                </>
               )}
-              <FormField label="Rate per kg (₹) *" value={item.rate_per_kg} onChangeText={v => setItemField(i, 'rate_per_kg', v)} keyboardType="decimal-pad" placeholder="e.g. 25.50" />
 
               <Text style={styles.fieldLabel}>Baardana Provided By</Text>
               <View style={styles.modeRow}>
@@ -463,10 +545,27 @@ export function KCCreateScreen() {
                 keyboardType="decimal-pad"
                 placeholder="0.00"
               />
-              <View style={styles.udharRow}>
-                <Text style={styles.udharLabel}>🔄 Udhar (auto-calculated)</Text>
-                <Text style={styles.udharAmount}>₹{udharAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</Text>
-              </View>
+
+              {/* Payment status — udhar / settled / overpayment */}
+              {paymentBalance > 0.005 ? (
+                <View style={styles.udharRow}>
+                  <Text style={styles.udharLabel}>🔄 Udhar (deferred)</Text>
+                  <Text style={styles.udharAmount}>₹{udharAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</Text>
+                </View>
+              ) : paymentBalance < -0.005 ? (
+                <View style={styles.overpayRow}>
+                  <View style={styles.overpayLeft}>
+                    <Text style={styles.overpayLabel}>✅ Overpayment</Text>
+                    <Text style={styles.overpayHint}>Extra amount will reduce customer's udhar balance</Text>
+                  </View>
+                  <Text style={styles.overpayAmount}>₹{overpaidAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</Text>
+                </View>
+              ) : (
+                <View style={styles.settledRow}>
+                  <Text style={styles.settledText}>✓ Fully Settled — No Udhar</Text>
+                </View>
+              )}
+
               {paymentModes.length === 0 && (
                 <Text style={styles.paymentWarning}>⚠️ Payment modes not configured — payments will be skipped</Text>
               )}
@@ -591,6 +690,16 @@ const styles = StyleSheet.create({
   modeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   modeChipText: { fontSize: typography.size.sm, color: colors.textSecondary, fontWeight: typography.weight.medium },
   modeChipTextActive: { color: colors.textInverse },
+  rateModeTag: { backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: radius.sm, paddingHorizontal: spacing[3], paddingVertical: spacing[1], alignSelf: 'flex-start', marginBottom: spacing[2] },
+  rateModeTagText: { fontSize: typography.size.xs, color: '#16a34a', fontWeight: typography.weight.semibold },
+  // Rate mode banner (firm-wide, locked by SA)
+  rateModeBar: { flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginHorizontal: spacing[4], marginBottom: spacing[3], borderRadius: radius.xl, padding: spacing[4], borderWidth: 1 },
+  rateModeBarKg: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+  rateModeBarNag: { backgroundColor: '#fdf4ff', borderColor: '#e9d5ff' },
+  rateModeBarIcon: { fontSize: 24 },
+  rateModeBarTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: '#1e293b' },
+  rateModeBarHint: { fontSize: typography.size.xs, color: '#64748b', marginTop: 2 },
+  rateModeBarLock: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: '#94a3b8' },
   addItemBtn: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center', borderStyle: 'dashed' },
   addItemText: { color: colors.primary, fontWeight: typography.weight.medium },
   estimateRow: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing[3] },
@@ -600,6 +709,13 @@ const styles = StyleSheet.create({
   udharRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3] },
   udharLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
   udharAmount: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.warning },
+  overpayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdf4', borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3], borderWidth: 1, borderColor: '#bbf7d0' },
+  overpayLeft: { flex: 1, marginRight: spacing[3] },
+  overpayLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: '#15803d' },
+  overpayHint: { fontSize: typography.size.xs, color: '#22c55e', marginTop: 2 },
+  overpayAmount: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#16a34a' },
+  settledRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0fdf4', borderRadius: radius.md, padding: spacing[3], marginBottom: spacing[3], borderWidth: 1, borderColor: '#bbf7d0' },
+  settledText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: '#15803d' },
   paymentWarning: { fontSize: typography.size.xs, color: colors.warning, marginTop: spacing[1] },
   submitBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', ...shadow.md },
   btnDisabled: { opacity: 0.5 },

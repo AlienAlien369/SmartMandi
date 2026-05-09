@@ -89,7 +89,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="Ledger"           component={LedgerScreen}           options={{ title: 'Ledger' }} />
       <MoreStack.Screen name="Reports"          component={ReportsScreen}          options={{ title: 'Reports & Exports' }} />
       <MoreStack.Screen name="SummarySheets"    component={SummarySheetsScreen}    options={{ title: 'Summary Sheets' }} />
-      <MoreStack.Screen name="Salary"           component={SalaryScreen}           options={{ title: 'Salary' }} />
+      <MoreStack.Screen name="Salary"           component={SalaryScreen}           options={{ title: 'Freight' }} />
       <MoreStack.Screen name="Users"            component={UsersScreen}            options={{ title: 'Team Members' }} />
       <MoreStack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings & Config' }} />
       <MoreStack.Screen name="RolePermissions"  component={RolePermissionsScreen}  options={{ title: 'Role Permissions' }} />

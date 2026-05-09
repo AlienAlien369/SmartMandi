@@ -13,7 +13,7 @@ const MODULE_MENU_ITEMS = [
   { moduleId: 'REPORTS',          icon: '📊', label: 'Reports',          screen: 'Reports' },
   { moduleId: 'LEDGER',           icon: '📒', label: 'Ledger',           screen: 'Ledger' },
   { moduleId: 'SUMMARY_SHEETS',   icon: '📄', label: 'Summary Sheets',   screen: 'SummarySheets' },
-  { moduleId: 'SALARY',           icon: '💰', label: 'Salary',           screen: 'Salary' },
+  { moduleId: 'SALARY',           icon: '🚛', label: 'Freight',         screen: 'Salary' },
   { moduleId: 'USERS',            icon: '👥', label: 'Users',            screen: 'Users' },
   { moduleId: 'SETTINGS',         icon: '⚙️', label: 'Config / Settings', screen: 'Settings' },
   { moduleId: 'ROLE_PERMISSIONS', icon: '🔐', label: 'Role Permissions', screen: 'RolePermissions', roleOnly: 'FIRM_HEAD' },

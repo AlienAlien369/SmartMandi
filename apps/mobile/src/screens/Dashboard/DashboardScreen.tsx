@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl,
-  TouchableOpacity,
+  TouchableOpacity, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -53,6 +53,37 @@ function getGreeting() {
   return 'Good evening 🌙';
 }
 
+// ─── Live indicator component ──────────────────────────────────────
+function LiveDot({ fetching }: { fetching: boolean }) {
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,   duration: 800, useNativeDriver: true }),
+      ])
+    );
+    if (fetching) { anim.start(); }
+    else { anim.stop(); pulse.setValue(1); }
+    return () => anim.stop();
+  }, [fetching]);
+
+  return (
+    <View style={liveDotStyles.wrap}>
+      <Animated.View style={[liveDotStyles.dot, { opacity: pulse, backgroundColor: fetching ? '#F59E0B' : '#10B981' }]} />
+      <Text style={[liveDotStyles.text, { color: fetching ? '#F59E0B' : '#10B981' }]}>
+        {fetching ? 'Updating…' : 'Live'}
+      </Text>
+    </View>
+  );
+}
+const liveDotStyles = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dot:  { width: 7, height: 7, borderRadius: 4 },
+  text: { fontSize: 11, fontWeight: '600' },
+});
+
 // ─── Screen ────────────────────────────────────────────────────────
 export function DashboardScreen() {
   const user = useSelector((s: RootState) => s.auth.user);
@@ -62,14 +93,15 @@ export function DashboardScreen() {
 
   const params = useMemo(() => getDateRange(preset), [preset]);
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<DashboardMetrics>({
+  const { data, isLoading, refetch, isRefetching, isFetching } = useQuery<DashboardMetrics>({
     queryKey: ['dashboard', params],
     queryFn: async () => {
       const { data } = await dashboardApi.get(params);
       return data;
     },
-    refetchInterval: preset === 'today' ? 15000 : false,
-    staleTime: 0,
+    refetchInterval: 15_000,              // poll every 15s on all presets
+    refetchIntervalInBackground: false,   // pause when app is backgrounded
+    staleTime: 10_000,
   });
 
   const fmt = (n: string | number | undefined) => {
@@ -98,8 +130,11 @@ export function DashboardScreen() {
             <Text style={styles.greeting}>{getGreeting()}, {user?.name?.split(' ')[0] ?? 'Welcome'}</Text>
             <Text style={styles.firmName}>{user?.firm_name ?? 'Smart Mandi'}</Text>
           </View>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{user?.role?.replace('_', ' ')}</Text>
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleText}>{user?.role?.replace('_', ' ')}</Text>
+            </View>
+            <LiveDot fetching={isFetching && !isLoading} />
           </View>
         </View>
 
@@ -181,7 +216,7 @@ export function DashboardScreen() {
 
             {data?.computed_at && (
               <Text style={styles.refreshHint}>
-                Last updated: {new Date(data.computed_at).toLocaleTimeString('en-IN')}
+                🕐 Updated {new Date(data.computed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · auto-refreshes every 15s
               </Text>
             )}
           </>

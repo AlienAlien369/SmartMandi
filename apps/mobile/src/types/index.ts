@@ -52,13 +52,19 @@ export interface Truck {
 export interface KcLineItem {
   id: string;
   kc_id: string;
-  produce_name: string;
-  grade_code: string;
+  grade_config_id?: string;
+  produce_name?: string;
+  grade_code?: string;
   quantity_bags: number;
-  weight_kg: string;
-  rate_per_kg: string;
+  weight_per_bag_kg?: string | null;
+  weight_kg?: string;           // legacy alias
+  total_weight_kg: string;
+  rate_per_kg: string;          // stores rate_per_nag value when rate_mode = PER_NAG
   gross_amount: string;
-  baardana_cost: string;
+  baardana_cost?: string;
+  baardana_source?: string;
+  baardana_quantity?: number;
+  rate_mode?: 'PER_KG' | 'PER_NAG';
 }
 
 export interface KcPayment {
@@ -138,6 +144,7 @@ export interface SalaryEntry {
   salary_date: string;
   amount: string;
   notes?: string;
+  freight_type: 'SALARY' | 'INAM' | 'KIRAYA' | 'PARCHI';
 }
 
 // Navigation param types

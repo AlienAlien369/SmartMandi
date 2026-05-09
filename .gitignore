@@ -117,3 +117,36 @@ temp/
 *.bak
 *.tmp
 *.temp
+
+# ─── Graphify (generated knowledge-graph output) ─────────────────────────────
+# All graphify-out/ directories anywhere in the repo (root, apps/, etc.)
+**/graphify-out/
+# Graphify runtime state files
+.graphify_python
+.graphify_uncached.txt
+.graphify_detect.json
+.graphify_extract.json
+.graphify_ast.json
+.graphify_semantic.json
+.graphify_semantic_new.json
+.graphify_cached.json
+.graphify_analysis.json
+.graphify_labels.json
+.graphify_incremental.json
+.graphify_chunk_*.json
+.graphify_old.json
+.graphify_transcripts.json
+.needs_update
+
+# ─── Firebase / Google Services ──────────────────────────────────────────────
+# Real google-services.json should NOT be committed (placeholder is OK)
+# apps/mobile/android/app/google-services.json  ← placeholder committed intentionally
+
+# ─── React Native Metro cache ─────────────────────────────────────────────────
+apps/mobile/.metro-health-check*
+.metro_cache/
+__pycache__/
+*.pyc
+
+# ─── Copilot CLI session state ────────────────────────────────────────────────
+.copilot/

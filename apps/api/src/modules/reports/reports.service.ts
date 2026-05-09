@@ -78,17 +78,13 @@ export class ReportsService {
       balanceMap.set(e.id, running.toFixed(2));
     }
 
-    // Apply date filter to the window that will be paged
+    // Apply date filter — compare date strings (YYYY-MM-DD) to avoid timezone edge cases
     let filteredEntries = allEntries;
     if (options.from || options.to) {
       filteredEntries = allEntries.filter(e => {
-        const d = new Date(e.created_at);
-        if (options.from && d < new Date(options.from)) return false;
-        if (options.to) {
-          const toEnd = new Date(options.to);
-          toEnd.setHours(23, 59, 59, 999);
-          if (d > toEnd) return false;
-        }
+        const d = new Date(e.created_at).toISOString().slice(0, 10);
+        if (options.from && d < options.from) return false;
+        if (options.to && d > options.to) return false;
         return true;
       });
     }

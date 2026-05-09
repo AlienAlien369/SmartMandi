@@ -1276,6 +1276,288 @@ SELECT
     ELSE '❌ FAIL: Expected 1 PARCHI entry'
   END AS parchi_check;
 
+-- ============================================================
+-- SECTION 17b: LEDGER ENTRIES (double-entry bookkeeping)
+-- ============================================================
+-- 15 transaction groups × 2 entries each = 30 rows
+-- Groups:
+--   G01 KC-003 auth (Suresh ₹14,525)      G09 Pay-004 KC-007 (Suresh ₹35,000)
+--   G02 KC-004 auth (Vijay  ₹3,460)       G10 Salary Operator ₹15,000
+--   G03 Pay-002 KC-003 (Suresh ₹20,000)   G11 Salary Viewer   ₹8,000
+--   G04 Pay-003 KC-004 (Vijay  ₹3,460)    G12 INAM  Truck3    ₹500
+--   G05 KC-001 auth (Ramesh ₹59,660)      G13 KIRAYA Truck3   ₹2,000
+--   G06 KC-002 auth (Ramesh ₹96,025)      G14 PARCHI Truck4   ₹100
+--   G07 Pay-001 KC-001 (Ramesh ₹30,000)   G15 INAM  Truck4    ₹300
+--   G08 KC-007 auth (Suresh ₹31,000)
+-- ============================================================
+\echo '[17b] Inserting ledger entries (30 rows)...'
+
+INSERT INTO ledger_entries (
+  id, firm_id, ledger_type, entry_type, amount, balance_after,
+  source_type, source_id, entry_group_id, customer_id, truck_id, user_id,
+  description, idempotency_key, created_by, created_at
+) VALUES
+
+-- ── G01: KC-003 auth 2026-05-07 (Suresh ₹14,525) ──────────────────────
+('eeeeeeee-0001-0001-0001-000000000001',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'CREDIT', 14525.00, 14525.00,
+ 'KC_AUTHORIZATION', '22222222-0003-0001-0001-000000000003',
+ 'ee000000-0001-0001-0001-000000000001',
+ 'ffffffff-0002-0001-0001-000000000002', NULL, NULL,
+ 'KC KC-2026-003 authorized - Suresh Patel', 'led-g01-customer-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 10:00:00+00'),
+
+('eeeeeeee-0002-0001-0001-000000000002',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 14525.00, -14525.00,
+ 'KC_AUTHORIZATION', '22222222-0003-0001-0001-000000000003',
+ 'ee000000-0001-0001-0001-000000000001', NULL, NULL, NULL,
+ 'KC KC-2026-003 authorized - firm cash committed', 'led-g01-firmcash-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 10:00:00+00'),
+
+-- ── G02: KC-004 auth 2026-05-07 (Vijay ₹3,460) ────────────────────────
+('eeeeeeee-0003-0001-0001-000000000003',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'CREDIT', 3460.00, 3460.00,
+ 'KC_AUTHORIZATION', '22222222-0004-0001-0001-000000000004',
+ 'ee000000-0002-0001-0001-000000000002',
+ 'ffffffff-0004-0001-0001-000000000004', NULL, NULL,
+ 'KC KC-2026-004 authorized - Vijay Singh', 'led-g02-customer-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 10:30:00+00'),
+
+('eeeeeeee-0004-0001-0001-000000000004',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 3460.00, -17985.00,
+ 'KC_AUTHORIZATION', '22222222-0004-0001-0001-000000000004',
+ 'ee000000-0002-0001-0001-000000000002', NULL, NULL, NULL,
+ 'KC KC-2026-004 authorized - firm cash committed', 'led-g02-firmcash-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 10:30:00+00'),
+
+-- ── G03: Pay-002 received (KC-003, Suresh ₹20,000) ────────────────────
+('eeeeeeee-0005-0001-0001-000000000005',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'DEBIT', 20000.00, -5475.00,
+ 'PAYMENT_RECEIVED', '44444444-0002-0001-0001-000000000002',
+ 'ee000000-0003-0001-0001-000000000003',
+ 'ffffffff-0002-0001-0001-000000000002', NULL, NULL,
+ 'Payment received from Suresh Patel', 'led-g03-customer-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 14:00:00+00'),
+
+('eeeeeeee-0006-0001-0001-000000000006',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'CREDIT', 20000.00, 2015.00,
+ 'PAYMENT_RECEIVED', '44444444-0002-0001-0001-000000000002',
+ 'ee000000-0003-0001-0001-000000000003', NULL, NULL, NULL,
+ 'Payment received from Suresh Patel - firm cash in', 'led-g03-firmcash-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 14:00:00+00'),
+
+-- ── G04: Pay-003 received (KC-004, Vijay ₹3,460) ──────────────────────
+('eeeeeeee-0007-0001-0001-000000000007',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'DEBIT', 3460.00, 0.00,
+ 'PAYMENT_RECEIVED', '44444444-0003-0001-0001-000000000003',
+ 'ee000000-0004-0001-0001-000000000004',
+ 'ffffffff-0004-0001-0001-000000000004', NULL, NULL,
+ 'Payment received from Vijay Singh - fully settled', 'led-g04-customer-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 14:30:00+00'),
+
+('eeeeeeee-0008-0001-0001-000000000008',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'CREDIT', 3460.00, 5475.00,
+ 'PAYMENT_RECEIVED', '44444444-0003-0001-0001-000000000003',
+ 'ee000000-0004-0001-0001-000000000004', NULL, NULL, NULL,
+ 'Payment received from Vijay Singh - firm cash in', 'led-g04-firmcash-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-07 14:30:00+00'),
+
+-- ── G05: KC-001 auth 2026-05-08 (Ramesh ₹59,660) ──────────────────────
+('eeeeeeee-0009-0001-0001-000000000009',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'CREDIT', 59660.00, 59660.00,
+ 'KC_AUTHORIZATION', '22222222-0001-0001-0001-000000000001',
+ 'ee000000-0005-0001-0001-000000000005',
+ 'ffffffff-0001-0001-0001-000000000001', NULL, NULL,
+ 'KC KC-2026-001 authorized - Ramesh Kumar', 'led-g05-customer-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 09:00:00+00'),
+
+('eeeeeeee-0010-0001-0001-000000000010',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 59660.00, -54185.00,
+ 'KC_AUTHORIZATION', '22222222-0001-0001-0001-000000000001',
+ 'ee000000-0005-0001-0001-000000000005', NULL, NULL, NULL,
+ 'KC KC-2026-001 authorized - firm cash committed', 'led-g05-firmcash-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 09:00:00+00'),
+
+-- ── G06: KC-002 auth 2026-05-08 (Ramesh ₹96,025) ──────────────────────
+('eeeeeeee-0011-0001-0001-000000000011',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'CREDIT', 96025.00, 155685.00,
+ 'KC_AUTHORIZATION', '22222222-0002-0001-0001-000000000002',
+ 'ee000000-0006-0001-0001-000000000006',
+ 'ffffffff-0001-0001-0001-000000000001', NULL, NULL,
+ 'KC KC-2026-002 authorized - Ramesh Kumar', 'led-g06-customer-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 09:30:00+00'),
+
+('eeeeeeee-0012-0001-0001-000000000012',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 96025.00, -150210.00,
+ 'KC_AUTHORIZATION', '22222222-0002-0001-0001-000000000002',
+ 'ee000000-0006-0001-0001-000000000006', NULL, NULL, NULL,
+ 'KC KC-2026-002 authorized - firm cash committed', 'led-g06-firmcash-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 09:30:00+00'),
+
+-- ── G07: Pay-001 received (KC-001, Ramesh ₹30,000) ────────────────────
+('eeeeeeee-0013-0001-0001-000000000013',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'DEBIT', 30000.00, 125685.00,
+ 'PAYMENT_RECEIVED', '44444444-0001-0001-0001-000000000001',
+ 'ee000000-0007-0001-0001-000000000007',
+ 'ffffffff-0001-0001-0001-000000000001', NULL, NULL,
+ 'Payment received from Ramesh Kumar', 'led-g07-customer-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 11:00:00+00'),
+
+('eeeeeeee-0014-0001-0001-000000000014',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'CREDIT', 30000.00, -120210.00,
+ 'PAYMENT_RECEIVED', '44444444-0001-0001-0001-000000000001',
+ 'ee000000-0007-0001-0001-000000000007', NULL, NULL, NULL,
+ 'Payment received from Ramesh Kumar - firm cash in', 'led-g07-firmcash-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 11:00:00+00'),
+
+-- ── G08: KC-007 auth 2026-05-08 (Suresh ₹31,000) ──────────────────────
+('eeeeeeee-0015-0001-0001-000000000015',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'CREDIT', 31000.00, 25525.00,
+ 'KC_AUTHORIZATION', '22222222-0007-0001-0001-000000000007',
+ 'ee000000-0008-0001-0001-000000000008',
+ 'ffffffff-0002-0001-0001-000000000002', NULL, NULL,
+ 'KC KC-2026-007 authorized - Suresh Patel', 'led-g08-customer-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 13:00:00+00'),
+
+('eeeeeeee-0016-0001-0001-000000000016',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 31000.00, -151210.00,
+ 'KC_AUTHORIZATION', '22222222-0007-0001-0001-000000000007',
+ 'ee000000-0008-0001-0001-000000000008', NULL, NULL, NULL,
+ 'KC KC-2026-007 authorized - firm cash committed', 'led-g08-firmcash-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 13:00:00+00'),
+
+-- ── G09: Pay-004 received (KC-007, Suresh ₹35,000 — overpayment) ───────
+('eeeeeeee-0017-0001-0001-000000000017',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'CUSTOMER', 'DEBIT', 35000.00, -9475.00,
+ 'PAYMENT_RECEIVED', '44444444-0004-0001-0001-000000000004',
+ 'ee000000-0009-0001-0001-000000000009',
+ 'ffffffff-0002-0001-0001-000000000002', NULL, NULL,
+ 'Payment from Suresh Patel - overpayment creates credit balance', 'led-g09-customer-debit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 15:00:00+00'),
+
+('eeeeeeee-0018-0001-0001-000000000018',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'CREDIT', 35000.00, -116210.00,
+ 'PAYMENT_RECEIVED', '44444444-0004-0001-0001-000000000004',
+ 'ee000000-0009-0001-0001-000000000009', NULL, NULL, NULL,
+ 'Payment from Suresh Patel - firm cash in', 'led-g09-firmcash-credit',
+ 'aaaaaaaa-0002-0001-0001-000000000002', '2026-05-08 15:00:00+00'),
+
+-- ── G10: Salary Operator ₹15,000 ───────────────────────────────────────
+('eeeeeeee-0019-0001-0001-000000000019',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'USER_SALARY', 'CREDIT', 15000.00, 15000.00,
+ 'SALARY_PAID', '55555555-0001-0001-0001-000000000001',
+ 'ee000000-0010-0001-0001-000000000010',
+ NULL, NULL, 'aaaaaaaa-0003-0001-0001-000000000003',
+ 'Salary paid to Operator', 'led-g10-usersalary-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 16:00:00+00'),
+
+('eeeeeeee-0020-0001-0001-000000000020',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 15000.00, -131210.00,
+ 'SALARY_PAID', '55555555-0001-0001-0001-000000000001',
+ 'ee000000-0010-0001-0001-000000000010', NULL, NULL, NULL,
+ 'Salary paid to Operator - firm cash out', 'led-g10-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 16:00:00+00'),
+
+-- ── G11: Salary Viewer ₹8,000 ──────────────────────────────────────────
+('eeeeeeee-0021-0001-0001-000000000021',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'USER_SALARY', 'CREDIT', 8000.00, 8000.00,
+ 'SALARY_PAID', '55555555-0002-0001-0001-000000000002',
+ 'ee000000-0011-0001-0001-000000000011',
+ NULL, NULL, 'aaaaaaaa-0004-0001-0001-000000000004',
+ 'Salary paid to Viewer', 'led-g11-usersalary-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 16:30:00+00'),
+
+('eeeeeeee-0022-0001-0001-000000000022',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 8000.00, -139210.00,
+ 'SALARY_PAID', '55555555-0002-0001-0001-000000000002',
+ 'ee000000-0011-0001-0001-000000000011', NULL, NULL, NULL,
+ 'Salary paid to Viewer - firm cash out', 'led-g11-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 16:30:00+00'),
+
+-- ── G12: INAM Truck3 ₹500 ──────────────────────────────────────────────
+('eeeeeeee-0023-0001-0001-000000000023',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'TRUCK', 'CREDIT', 500.00, 500.00,
+ 'INAM_PAID', '55555555-0003-0001-0001-000000000003',
+ 'ee000000-0012-0001-0001-000000000012',
+ NULL, '11111111-0003-0001-0001-000000000003', NULL,
+ 'INAM paid for Truck3 driver', 'led-g12-truck-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:00:00+00'),
+
+('eeeeeeee-0024-0001-0001-000000000024',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 500.00, -139710.00,
+ 'INAM_PAID', '55555555-0003-0001-0001-000000000003',
+ 'ee000000-0012-0001-0001-000000000012', NULL, NULL, NULL,
+ 'INAM paid for Truck3 - firm cash out', 'led-g12-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:00:00+00'),
+
+-- ── G13: KIRAYA Truck3 ₹2,000 ──────────────────────────────────────────
+('eeeeeeee-0025-0001-0001-000000000025',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'TRUCK', 'CREDIT', 2000.00, 2500.00,
+ 'INAM_PAID', '55555555-0004-0001-0001-000000000004',
+ 'ee000000-0013-0001-0001-000000000013',
+ NULL, '11111111-0003-0001-0001-000000000003', NULL,
+ 'KIRAYA paid for Truck3 driver', 'led-g13-truck-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:10:00+00'),
+
+('eeeeeeee-0026-0001-0001-000000000026',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 2000.00, -141710.00,
+ 'INAM_PAID', '55555555-0004-0001-0001-000000000004',
+ 'ee000000-0013-0001-0001-000000000013', NULL, NULL, NULL,
+ 'KIRAYA paid for Truck3 - firm cash out', 'led-g13-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:10:00+00'),
+
+-- ── G14: PARCHI Truck4 ₹100 ────────────────────────────────────────────
+('eeeeeeee-0027-0001-0001-000000000027',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'TRUCK', 'CREDIT', 100.00, 100.00,
+ 'INAM_PAID', '55555555-0005-0001-0001-000000000005',
+ 'ee000000-0014-0001-0001-000000000014',
+ NULL, '11111111-0004-0001-0001-000000000004', NULL,
+ 'PARCHI paid for Truck4 driver', 'led-g14-truck-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:20:00+00'),
+
+('eeeeeeee-0028-0001-0001-000000000028',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 100.00, -141810.00,
+ 'INAM_PAID', '55555555-0005-0001-0001-000000000005',
+ 'ee000000-0014-0001-0001-000000000014', NULL, NULL, NULL,
+ 'PARCHI paid for Truck4 - firm cash out', 'led-g14-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:20:00+00'),
+
+-- ── G15: INAM Truck4 ₹300 ──────────────────────────────────────────────
+('eeeeeeee-0029-0001-0001-000000000029',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'TRUCK', 'CREDIT', 300.00, 400.00,
+ 'INAM_PAID', '55555555-0006-0001-0001-000000000006',
+ 'ee000000-0015-0001-0001-000000000015',
+ NULL, '11111111-0004-0001-0001-000000000004', NULL,
+ 'INAM paid for Truck4 driver', 'led-g15-truck-credit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:30:00+00'),
+
+('eeeeeeee-0030-0001-0001-000000000030',
+ '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_CASH', 'DEBIT', 300.00, -142110.00,
+ 'INAM_PAID', '55555555-0006-0001-0001-000000000006',
+ 'ee000000-0015-0001-0001-000000000015', NULL, NULL, NULL,
+ 'INAM paid for Truck4 - firm cash out', 'led-g15-firmcash-debit',
+ 'aaaaaaaa-0001-0001-0001-000000000001', '2026-05-08 17:30:00+00')
+
+ON CONFLICT (idempotency_key) DO NOTHING;
+
+SELECT
+  CASE
+    WHEN (SELECT COUNT(*) FROM ledger_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb') = 30
+    THEN '✅ PASS: 30 ledger entries'
+    ELSE '❌ FAIL: Expected 30 ledger entries, got ' ||
+         (SELECT COUNT(*) FROM ledger_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::text
+  END AS ledger_check,
+  CASE
+    WHEN (SELECT COUNT(*) FROM ledger_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb' AND ledger_type = 'FIRM_CASH') = 15
+    THEN '✅ PASS: 15 FIRM_CASH entries'
+    ELSE '❌ FAIL: Expected 15 FIRM_CASH'
+  END AS firm_cash_check,
+  CASE
+    WHEN (SELECT COUNT(*) FROM ledger_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb' AND ledger_type = 'CUSTOMER') = 9
+    THEN '✅ PASS: 9 CUSTOMER entries'
+    ELSE '❌ FAIL: Expected 9 CUSTOMER'
+  END AS customer_check;
+
 -- ── 6. Final data summary ─────────────────────────────────────
 \echo ''
 \echo '--- [6] Data Summary ---'
@@ -1298,7 +1580,8 @@ SELECT table_name, row_count FROM (
   SELECT 'kaccha_chitthas',                    (SELECT COUNT(*) FROM kaccha_chitthas WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,            15 UNION ALL
   SELECT 'kc_line_items',                      (SELECT COUNT(*) FROM kc_line_items WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,              16 UNION ALL
   SELECT 'kc_payments',                        (SELECT COUNT(*) FROM kc_payments WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,                17 UNION ALL
-  SELECT 'salary_entries',                     (SELECT COUNT(*) FROM salary_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,             18
+  SELECT 'salary_entries',                     (SELECT COUNT(*) FROM salary_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,             18 UNION ALL
+  SELECT 'ledger_entries',                     (SELECT COUNT(*) FROM ledger_entries WHERE firm_id = '115c557f-0c07-4162-b3bc-84f1feab88fb')::INT,             19
 ) t ORDER BY sort_key;
 
 \echo ''

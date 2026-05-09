@@ -1,6 +1,6 @@
 # Smart Mandi — Feature Tracking (Persistent Memory)
 ## Updated after every phase — agent context file
-## Current: Phase 8 Mobile App (COMPLETE)
+## Current: Phase 10 Extended Features (COMPLETE)
 
 ---
 
@@ -269,6 +269,67 @@
 
 ---
 
+## ✅ PHASE 10 — Extended Features & Bug Fixes (COMPLETE)
+
+### KC Rate Mode (Configurable per Firm)
+- [x] `rate_mode` field added to `kc_line_items` table (migration 009)
+- [x] Two rate modes: **RATE_PER_KG** (default) and **RATE_PER_NAG** (per bag/baardana)
+- [x] SA configures rate mode per firm via `PUT /super-admin/firms/:id/rate-mode`
+- [x] KC line item form adapts dynamically — shows "Rate/Kg" or "Rate/Nag" label
+- [x] `gross_amount` calculation switches based on mode: `weight × rate` vs `nag_count × rate`
+
+### Grade Configuration (Per-Firm Custom Terminology)
+- [x] `grades` table added (migration 009): `id, firm_id, label, sort_order, is_active`
+- [x] SA creates/edits grades per firm via `GET/POST/PUT /super-admin/firms/:id/grades`
+- [x] `grade_id` on `kc_line_items` references `grades` table (FK + RLS)
+- [x] KC Create screen: grade dropdown populated from firm-specific grades API
+- [x] Grades screen in SA Dashboard: full CRUD to configure labels (e.g. "A Grade", "Pili Matar", "Desi")
+
+### Baardana Provider Config (Per-Firm)
+- [x] Baardana config entity: `baardana_provider` field (FIRM_OWNED | DRIVER_PROVIDED) added (migration 008)
+- [x] ConfiguratorService.resolveConfig(): returns `baardana_provider` alongside existing config
+- [x] KC line item creation: `baardana_cost` ledger direction depends on provider
+
+### Push Notifications (KC Authorization)
+- [x] FCM integration: `POST /users/fcm-token` stores device token on user record
+- [x] `NotificationService` dispatched by `EventConsumerService` on `KC_AUTHORIZED`
+- [x] Recipients: **KC authorizer** + **FIRM_HEAD** of the firm → both receive push notification
+- [x] Notification payload: `"KC #<number> Authorized"` with KC amount summary
+- [x] Mobile: FCM token registered on login via `usersApi.saveFcmToken(token)`
+
+### Freight Payments Screen (Renamed from Salary)
+- [x] `SalaryController` tagged as `@ApiTags('freight')` — UI uses "Freight" terminology
+- [x] `freight_type` column on `salary_entries`: EMPLOYEE_SALARY | DRIVER_INAM | DRIVER_KIRAYA | DRIVER_PARCHI
+- [x] Create freight payment form: type selector determines recipient (employee vs truck driver)
+- [x] Freight list: grouped by type with color-coded badges
+- [x] Ledger entry label reflects freight type (not generic "SALARY")
+
+### Customer Credit Balance (Negative Udhar)
+- [x] `CustomerDetailScreen`: when firm owes customer money (negative udhar), shows green "Credit Balance" card
+- [x] Balance logic: positive udhar = customer owes firm (red); negative = firm owes customer (green)
+- [x] `GET /customers/:id/history` response includes `credit_balance` flag + `balance_type` field
+
+### Ledger Date Filter Fix
+- [x] **Bug fixed**: `reports.service.ts` date filter used `new Date('YYYY-MM-DD')` which resolves to midnight UTC = 5:30 AM IST — entries before 5:30 AM on any date were wrongly excluded
+- [x] **Fix**: replaced Date object comparison with ISO string comparison (`.toISOString().slice(0,10)`)
+- [x] All 5 filter combinations verified: FIRM_CASH/CUSTOMER/TRUCK/USER_SALARY + date range
+
+### SADashboardScreen Text Rendering Fix
+- [x] **Bug fixed**: bare string `{condition && 'text'}` inside RCTView caused "Text strings must be rendered within a `<Text>` component" crash on Android
+- [x] **Fix**: wrapped all conditional string renders in `<Text>` components in SADashboardScreen
+
+### Comprehensive Test Seed
+- [x] `apps/api/src/database/seeds/comprehensive_test_seed.sql` — master test dataset
+- [x] 30 ledger entries added (Section 17b) covering all business scenarios
+- [x] Double-entry bookkeeping verified: SUM(CREDIT) == SUM(DEBIT) per entry_group_id
+
+### Graphify Knowledge Graph
+- [x] `graphify-out/graph.html` — 663-node interactive knowledge graph (open in browser)
+- [x] `graphify-out/GRAPH_REPORT.md` — 35KB audit report: god nodes, surprising connections, 25 community labels
+- [x] God nodes: `SuperAdminController` (24 edges), `ConfiguratorService` (22), `RbacService` (18)
+
+---
+
 ## SEEDED TEST CREDENTIALS
 
 | Role | Phone | Firm ID | Notes |
@@ -311,17 +372,17 @@
 - OTP is mocked in dev (`NODE_ENV === 'development'`) — real SMS via Twilio/MSG91 needed for production
 - JWT uses `HS256` (secret-based) for dev — upgrade to `RS256` asymmetric keys for production
 - SA token uses HS256 shared secret — use RS256 asymmetric in production
-- KC group integrity check bypassed in KC service — use periodic reconciliation job
 - KC number is count-based (not concurrency-safe at extreme scale) — upgrade to DB SEQUENCE in production
 - Summary sheet generation is synchronous — move to background job for large date ranges
 - CSV export returns raw text — add proper download + share for mobile in production
-- Custom fields UI (mobile) not yet implemented — data model is ready (CustomFieldDef + CustomFieldValue)
+- Custom fields UI (mobile) not yet implemented — data model is ready (CustomFieldDef + CustomFieldValue), no controller/service registered yet
 - Commission truck-level override UI (mobile) not yet implemented
-- Reports screen has partial functionality (some endpoints need verification)
-- Ledger screen endpoint needs verification in integration test
-- Summary sheets screen needs polish and UX improvements
-- No real push notifications — alerts are in-app polling only (no FCM/APNs)
-- Mobile Alert.prompt used for quick actions in some screens — replace with proper modal forms in production
+- Push notifications require `google-services.json` (FCM) — not committed to repo; must be added from Firebase console before building Android
+- FCM notifications only tested via API; end-to-end device delivery needs real Firebase project
+- Amounts in DB are **rupees (NUMERIC 14,2)**, not paise — API transport also in rupees
+- Base URL for API does NOT include `firm_id` — firm ID comes from JWT claim only
+- `SalaryController` is tagged `freight` in Swagger — module name in code is `salary`
+- `graphify-out/` directory contains generated knowledge graph artifacts — not committed to git
 
 ---
 
@@ -332,14 +393,20 @@ When resuming from a new session, read this file first. Key facts:
 2. **Ledger is append-only** — NEVER update or delete ledger entries; write reversal entries instead
 3. **Idempotency key** required on every POST/PUT (X-Idempotency-Key header)
 4. **Config is versioned** — always fetch config active at `transaction_date`, not current config
-5. **Amounts are stored, never recomputed** after authorization
+5. **Amounts are stored, never recomputed** after authorization — NUMERIC(14,2) in DB, rupees (not paise)
 6. **Events trigger side effects** — ledger writes and dashboard updates happen via event consumers, not inline
 7. **Super Admin is separate** — SA token is not a firm JWT; SA endpoints use `@Public()` + `?admin_token` query param
 8. **Module access is three-tier** — SA assigns modules to firms → FIRM_HEAD assigns CRUD per role → users see permitted tabs only
 9. **accessibleModuleIds in Redux** — drives conditional tab rendering in MainNavigator
 10. **Route order matters in NestJS** — register `GET /:id/history` before `GET /:id`
-11. **User delete = soft delete** — `is_active = false` preserved in DB (FK refs from salary/ledger/audit); `findAll` filters `WHERE is_active = true`
+11. **User delete = soft delete** — `is_active = false` preserved in DB; `findAll` filters `WHERE is_active = true`
 12. **Salary delete = reversal entries** — FIRM_CASH CREDIT + USER_SALARY DEBIT written before hard-deleting `salary_entry` row
 13. **Truck delete = SCHEDULED only** — cannot delete trucks with financial records (ARRIVED/CLOSED)
-14. **Dynamic RBAC** — `PermissionsGuard` + `@RequirePermission(module, action)` on all write endpoints; FIRM_HEAD bypasses; other roles checked against `role_module_permissions`
+14. **Dynamic RBAC** — `PermissionsGuard` + `@RequirePermission(module, action)` on all write endpoints; FIRM_HEAD bypasses
 15. **SA can configure role permissions** — `GET/PUT /super-admin/firms/:firmId/role-permissions/:role`
+16. **KC rate mode** — RATE_PER_KG (default) or RATE_PER_NAG; configured per firm by SA
+17. **Grades are firm-specific** — grade labels configured by SA per firm; `grade_id` FK on `kc_line_items`
+18. **Push notifications** — KC authorization triggers FCM to authorizer + FIRM_HEAD via NotificationService
+19. **Freight = Salary module** — `salary_entries` table tagged `freight` in API; has `freight_type` column
+20. **API base path has no firm_id in URL** — `firm_id` comes from JWT exclusively; routes are `/api/v1/trucks` not `/api/v1/:firmId/trucks`
+21. **Migrations are 001–009** — not 001–005 as some old docs state; migrations 006–009 added baardana, rate_mode, freight_type, grades

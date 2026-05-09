@@ -280,6 +280,129 @@ Architecture rules:
 
 ---
 
+---
+
+## PROMPT 010 — Phase 10: Extended Features Batch (COMPLETE)
+**Date:** Phase 10
+
+### Prompt Summary
+Multi-feature batch: KC rate mode, grade config, baardana provider, push notifications, freight type split, customer credit balance.
+
+### Prompt Template
+```
+Context: docs/features.md Phases 1–9 complete.
+Phase 10 batch:
+
+1. KC Rate Mode:
+   - Add rate_mode ENUM('RATE_PER_KG', 'RATE_PER_NAG') to kc_line_items (migration 009)
+   - SA sets rate_mode per firm via PUT /super-admin/firms/:id/rate-mode
+   - KC line item form shows dynamic label based on mode
+   - gross_amount: RATE_PER_KG = weight × rate, RATE_PER_NAG = nag_count × rate
+
+2. Grade Config (per firm):
+   - grades table: id, firm_id, label, sort_order, is_active (migration 009)
+   - SA CRUD: GET/POST/PUT /super-admin/firms/:id/grades
+   - kc_line_items.grade_id → grades(id) FK + RLS
+   - KC Create dropdown: fetch grades for current firm
+
+3. Baardana Provider:
+   - Add baardana_provider ENUM('FIRM_OWNED', 'DRIVER_PROVIDED') to baardana_configs (migration 008)
+   - ConfiguratorService resolves provider at sale_date
+
+4. Push Notifications:
+   - POST /users/fcm-token — store FCM token on users table
+   - NotificationService.send(recipients, title, body)
+   - EventConsumerService.handleKcAuthorized: notify KC authorizer + FIRM_HEAD
+   - Mobile: register token on login, handle onMessage + onNotificationOpenedApp
+
+5. Freight types:
+   - freight_type ENUM on salary_entries: EMPLOYEE_SALARY | DRIVER_INAM | DRIVER_KIRAYA | DRIVER_PARCHI
+   - Create form: type determines recipient (employee vs truck driver)
+   - Ledger entry description uses freight_type
+
+6. Customer credit balance:
+   - GET /customers/:id/history: add credit_balance boolean + balance_type field
+   - CustomerDetailScreen: positive udhar = red "Owes Firm", negative = green "Credit Balance"
+```
+
+### What It Generated
+- Migration 008: baardana_provider column
+- Migration 009: rate_mode on kc_line_items, grades table
+- NotificationService with FCM HTTP v1 API
+- EventConsumerService updated to send notifications
+- freight_type enum + salary_entries migration
+- Customer history endpoint updated with credit balance flag
+- KC Create rate mode adaptive form
+- SA Grade management screen
+
+### Improvements
+- Batching related features into one prompt → fewer context reloads
+- Specifying exact ENUM values → no naming drift
+- "notify KC authorizer + FIRM_HEAD" explicit → both recipients implemented
+
+---
+
+## PROMPT 011 — Ledger Date Filter Bug Fix (COMPLETE)
+**Date:** Phase 10 (bug fix)
+
+### Prompt Summary
+Ledger screen showed empty data on all filters. Two root causes: empty `ledger_entries` table (seeded KCs bypass event system) and timezone bug in date filter.
+
+### Prompt Template
+```
+Context: Ledger screen returns empty on all filter combinations (FIRM_CASH, CUSTOMER, date range).
+
+Root cause 1: ledger_entries table is empty. Seeded KCs are inserted as AUTHORIZED directly via SQL,
+  bypassing EventConsumerService which normally writes ledger entries.
+Fix: Add 30 ledger entries to comprehensive_test_seed.sql (Section 17b).
+  Use double-entry bookkeeping: for each KC, write CUSTOMER CREDIT + FIRM_CASH entries.
+  UUIDs must use only hex chars (0-9, a-f) for entry_group_id.
+
+Root cause 2: reports.service.ts date filter:
+  new Date('2026-05-09') = midnight UTC = 5:30 AM IST.
+  Entries created before 5:30 AM on any date are wrongly excluded.
+Fix: Compare date strings: entity.created_at.toISOString().slice(0, 10) >= options.from
+  instead of comparing Date objects.
+```
+
+### What It Generated
+- `reports.service.ts` date filter fix (string comparison)
+- 30 ledger entries in `comprehensive_test_seed.sql`
+
+### Improvements
+- Specifying exact root causes → surgical fix, no regressions
+- Specifying "hex chars only" for UUIDs → avoids invalid UUID seed data
+
+---
+
+## PROMPT 012 — Full Documentation Update (COMPLETE)
+**Date:** Session (current)
+
+### Prompt Summary
+Full documentation update across all docs to match actual codebase state after 10 phases of development.
+
+### What Was Found (Audit by Explore Agent)
+- README said "migrations 001–005" — actual: 001–009
+- copilot-instructions said "amounts in paise" — actual: rupees (NUMERIC 14,2)
+- copilot-instructions said base path `/api/v1/{firm_id}/` — actual: no firm_id in URL
+- LLD had CustomFieldsModule as registered NestJS module — entities exist but no controller/service registered
+- Config endpoints in README (POST /config/versions, GET /config/resolve) — not in ConfiguratorController
+- SalaryController tagged `freight` in Swagger — docs used "Salary"
+
+### What It Updated
+- README.md: migration count, API endpoint table, version header
+- docs/features.md: Phase 10 section, KNOWN LIMITATIONS, AGENT CONTEXT (21 items)
+- docs/HLD.md: version header, NotificationService in architecture diagram
+- docs/LLD.md: version header, removed CustomFieldsModule, added NotificationModule
+- docs/agents.md: added notification-engineer + graphify-analyst agents, updated fleet examples
+- docs/prompts.md: added PROMPT 010-012 (this entry)
+- .github/copilot-instructions.md: fixed "amounts in paise", fixed base path, updated migration count
+
+### Meta-Lesson
+Run a full doc audit after every 2-3 phases. Docs drift silently — the graphify knowledge graph + explore agent audit catches drift that manual tracking misses.
+
+---
+
 ## META: Prompt Engineering Lessons
 
 | Pattern | Result | Use When |

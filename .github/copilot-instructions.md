@@ -62,7 +62,7 @@ SF/
 │   │       │   ├── decorators/     # @Roles(), @CurrentUser(), @FirmId(), @Public()
 │   │       │   └── pipes/          # ParseUUIDPipe, DecimalPipe
 │   │       ├── database/
-│   │       │   ├── migrations/     # Numbered SQL migrations (001–004)
+│   │       │   ├── migrations/     # Numbered SQL migrations (001–009)
 │   │       │   └── seeds/          # Dev/test seed data
 │   │       └── config/             # App configuration (env validation)
 │   └── mobile/                     # React Native 0.74 app
@@ -138,11 +138,11 @@ const commission = grossAmount * rate / 100; // floating point errors!
 ```
 
 ### API Design
-- Base path: `/api/v1/{firm_id}/` (firm_id extracted from JWT, not used as DB param)
+- Base path: `/api/v1/` — **firm_id is NEVER in the URL path**; it comes from JWT claim only
 - All mutation endpoints require `X-Idempotency-Key` header
 - Pagination: `?page=1&limit=50` (max 100)
 - Dates: ISO 8601 format
-- Amounts: In paise (integer) in API transport, converted to rupees in UI
+- Amounts: **Rupees (`NUMERIC(14,2)`)** in both DB and API transport — do NOT convert to paise
 
 ### Error Responses
 ```typescript
@@ -276,6 +276,12 @@ import { API_BASE_URL } from '../api/constants';
 | Config Version | Time-bound business rules snapshot |
 | Module | A top-level feature/page (TRUCKS, KCS, LEDGER, etc.) |
 | Role Permission | CRUD access a specific role has on a specific module within a firm |
+| Rate Mode | KC calculation mode: RATE_PER_KG (default) or RATE_PER_NAG (per bag) |
+| Grade | Firm-specific quality label for produce (e.g. "A Grade", "Pili Matar") — configured by SA per firm |
+| Freight Type | Category of payment in salary_entries: EMPLOYEE_SALARY / DRIVER_INAM / DRIVER_KIRAYA / DRIVER_PARCHI |
+| Baardana Provider | Who supplies bags: FIRM_OWNED or DRIVER_PROVIDED — affects ledger direction |
+| Kiraya | Transport fare paid to truck driver |
+| Parchi | Document/slip fee paid to truck driver |
 
 ---
 
@@ -284,7 +290,8 @@ import { API_BASE_URL } from '../api/constants';
 - ❌ Never use `float` or `number` for financial amounts — use `Decimal.js`
 - ❌ Never UPDATE or DELETE `ledger_entries` — write reversal entries instead
 - ❌ Never recompute commission/APMC fee from current config — use stored snapshot
-- ❌ Never pass `firm_id` as a URL parameter that reaches database queries
+- ❌ Never pass `firm_id` as a URL parameter that reaches database queries — always from JWT
+- ❌ Never put `firm_id` in the API URL path — base path is `/api/v1/`, not `/api/v1/:firmId/`
 - ❌ Never write ledger entries inline — always via event consumer
 - ❌ Never skip idempotency key on write endpoints
 - ❌ Never hardcode grade names, produce types, fee values — all come from config
@@ -293,6 +300,8 @@ import { API_BASE_URL } from '../api/constants';
 - ❌ Never use `@UseGuards(JwtAuthGuard)` on Super Admin endpoints — they use `@Public()` + token
 - ❌ Never use `rbacApi.getAllModules()` to populate role/permission UIs — always use `rbacApi.getMyModules()` (firm-filtered)
 - ❌ Never hardcode the API base URL in mobile — always import from `apps/mobile/src/api/constants.ts`
+- ❌ Never use amounts in paise — DB and API use rupees (`NUMERIC(14,2)`)
+- ❌ Never call the salary module "Salary" in UI copy — use "Freight" (SalaryController is `@ApiTags('freight')`)
 - ❌ Never register a parameterized route (`:id`) before a specific sub-route (`:id/history`)
 
 ---

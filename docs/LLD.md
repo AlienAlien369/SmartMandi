@@ -1,5 +1,5 @@
 # Smart Mandi — Low-Level Design (LLD)
-## Version 2.0 · Phase 8 Mobile App (All Phases Complete)
+## Version 2.0 · Phase 10 Extended Features (All Phases Complete)
 
 ---
 
@@ -26,9 +26,9 @@ graph TB
         AM --> KCM[KacchaChitthaModule]
         AM --> DashM[DashboardModule]
         AM --> ReportM[ReportsModule]
-        AM --> SalaryM[SalaryModule]
+        AM --> SalaryM[SalaryModule<br/>(tagged: freight)]
         AM --> RbacM[RbacModule<br/>RBAC + SuperAdmin]
-        AM --> CustomFieldM[CustomFieldsModule]
+        AM --> NotifM[NotificationModule<br/>FCM Push]
     end
 ```
 

@@ -1,5 +1,5 @@
 # Smart Mandi — High-Level Design (HLD)
-## Version 2.0 · Phase 8 Mobile App (All Phases Complete)
+## Version 2.0 · Phase 10 Extended Features (All Phases Complete)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Scale target:** 500 firms · 100,000 transactions/day · Financial auditability
 
-**Current phase:** Phase 9 — CRUD Completion, Dynamic RBAC & Premium UI (all phases complete)
+**Current phase:** Phase 10 — KC Rate Mode, Grade Config, Push Notifications, Freight Payments, Ledger Fix (all phases complete)
 
 ---
 
@@ -35,7 +35,9 @@ graph TB
         ConfigSvc[Configurator<br/>Versioned Rules]
         DashSvc[Dashboard Service<br/>Metrics]
         ReportSvc[Report Service<br/>Summary Sheet]
-        SalarySvc[Salary Service]
+        SalarySvc[Freight/Salary Service]
+        RbacSvc[RBAC Service]
+        NotifSvc[Notification Service<br/>FCM Push]
     end
 
     subgraph "Async Layer"

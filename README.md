@@ -1,8 +1,9 @@
 # Smart Mandi v2.0 🌾
 
 > **Production-grade, multi-tenant SaaS for digital APMC mandi management**  
-> NestJS · PostgreSQL · React Native · AWS SQS · Redis  
-> Offline-first · Event-driven · Append-only ledger · Row-Level Security · Dynamic RBAC
+> NestJS 10 · PostgreSQL 15 · React Native 0.74 · AWS SQS · Redis 7  
+> Offline-first · Event-driven · Append-only ledger · Row-Level Security · Dynamic RBAC  
+> **Phase 10 COMPLETE** — KC Rate Mode · Baardana/Grade Config · Push Notifications · Freight Payments · Ledger Fix
 
 ---
 
@@ -32,7 +33,7 @@ SF/
 │   │       │   ├── decorators/     # @RequirePermission, @CurrentUser, @CurrentFirmId
 │   │       │   └── interceptors/   # FirmContextInterceptor (RLS injection)
 │   │       └── database/
-│   │           └── migrations/     # 001–005 SQL migrations
+│   │           └── migrations/     # 001–009 SQL migrations
 │   └── mobile/                 # React Native 0.74 + Expo SDK 50
 │       └── src/
 │           ├── api/            # Typed API client + all endpoint wrappers
@@ -65,7 +66,7 @@ cd apps/api
 cp .env.example .env           # Fill in DB + JWT + Redis config
 docker compose up -d           # Start PostgreSQL + Redis
 npm install
-npm run migration:run          # Run migrations 001–005
+npm run migration:run          # Run migrations 001–009
 npm run start:dev              # Hot-reload dev server → http://localhost:3000
 # Swagger UI: http://localhost:3000/api
 ```
@@ -145,15 +146,15 @@ Super Admin
 
 | Module | Endpoints |
 |--------|-----------|
-| **Auth** | `POST /auth/login` · `POST /auth/refresh` |
+| **Auth** | `POST /auth/login` · `POST /auth/refresh` · `GET /auth/me` |
 | **Trucks** | `POST /trucks` · `GET /trucks` · `GET /trucks/:id` · `POST /trucks/:id/arrive` · `POST /trucks/:id/close` · `DELETE /trucks/:id` *(SCHEDULED only)* |
 | **KCs** | `POST /kcs` · `GET /kcs` · `GET /kcs/:id` · `PATCH /kcs/:id/items` · `POST /kcs/:id/payments` · `POST /kcs/:id/authorize` · `POST /kcs/:id/cancel` |
 | **Customers** | `POST /customers` · `GET /customers` · `GET /customers/:id` · `GET /customers/:id/history` · `PATCH /customers/:id` · `DELETE /customers/:id` |
-| **Config** | `POST /config/versions` · `GET /config/versions` · `POST /config/grade` · `GET /config/resolve` |
+| **Config** | `GET /config` · `GET /config/versions` · `POST /config/versions` · `GET /config/grades` · `POST /config/grades` · `GET /config/baardana` · `POST /config/baardana` |
 | **Dashboard** | `GET /dashboard` *(date params)* · `POST /dashboard/summary-sheets` · `GET /dashboard/summary-sheets` |
 | **Reports** | `GET /reports/ledger` · `GET /reports/cash-flow` · `GET /reports/export/kcs` · `GET /reports/export/trucks` |
-| **Salary** | `POST /salary` · `GET /salary` · `PATCH /salary/:id` *(notes only)* · `DELETE /salary/:id` *(reversal entries)* |
-| **Users** | `POST /users` · `GET /users` *(active only)* · `PATCH /users/:id` · `DELETE /users/:id` *(soft-delete)* |
+| **Freight/Salary** | `POST /salary` · `GET /salary` · `PATCH /salary/:id` *(notes only)* · `DELETE /salary/:id` *(reversal entries)* |
+| **Users** | `POST /users` · `GET /users` *(active only)* · `PATCH /users/:id` · `DELETE /users/:id` *(soft-delete)* · `POST /users/fcm-token` |
 | **RBAC** | `GET /rbac/my-modules` · `GET /rbac/my-permissions` · `GET /rbac/firm-modules` · `GET/PUT /rbac/permissions/:role` |
 | **Super Admin** | `POST /super-admin/login` · `GET/POST/PUT/DELETE /super-admin/firms` · `GET/PUT /super-admin/firms/:id/modules` · `GET/PUT /super-admin/firms/:id/role-permissions/:role` |
 

@@ -20,6 +20,7 @@ import { ConfiguratorService } from '../config/configurator.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { EventStoreService } from '../events/event-store.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationService } from '../notifications/notification.service';
 import {
   KCStatus, BaardanaSource, LedgerType, EntryType,
   SourceType, AuditAction,
@@ -43,6 +44,7 @@ export class KacchaChitthaService {
     private readonly ledgerService: LedgerService,
     private readonly eventStore: EventStoreService,
     private readonly auditService: AuditService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -76,10 +78,15 @@ export class KacchaChitthaService {
                 .toFixed(2)
             : '0.00';
 
-        const grossAmount = new Decimal(item.total_weight_kg)
-          .mul(item.rate_per_kg)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-          .toFixed(2);
+        const grossAmount = item.rate_mode === 'PER_NAG'
+          ? new Decimal(item.quantity_bags)
+              .mul(item.rate_per_kg)
+              .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+              .toFixed(2)
+          : new Decimal(item.total_weight_kg)
+              .mul(item.rate_per_kg)
+              .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+              .toFixed(2);
 
         return qr.manager.create(KcLineItem, {
           firm_id: firmId,
@@ -92,6 +99,7 @@ export class KacchaChitthaService {
           baardana_source: item.baardana_source,
           baardana_quantity: item.baardana_quantity,
           baardana_cost: baardanaCost,
+          rate_mode: item.rate_mode ?? 'PER_KG',
           sort_order: item.sort_order ?? idx,
         });
       });
@@ -219,8 +227,11 @@ export class KacchaChitthaService {
           item.baardana_source === BaardanaSource.FIRM && baardanaConfig
             ? new Decimal(baardanaConfig.cost_per_unit).mul(item.baardana_quantity).toFixed(2)
             : '0.00';
-        const grossAmount = new Decimal(item.total_weight_kg).mul(item.rate_per_kg)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+        const grossAmount = item.rate_mode === 'PER_NAG'
+          ? new Decimal(item.quantity_bags).mul(item.rate_per_kg)
+              .toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2)
+          : new Decimal(item.total_weight_kg).mul(item.rate_per_kg)
+              .toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
 
         return qr.manager.create(KcLineItem, {
           firm_id: firmId, kc_id: id,
@@ -233,6 +244,7 @@ export class KacchaChitthaService {
           baardana_source: item.baardana_source,
           baardana_quantity: item.baardana_quantity,
           baardana_cost: baardanaCost,
+          rate_mode: item.rate_mode ?? 'PER_KG',
           sort_order: item.sort_order ?? idx,
         });
       });
@@ -294,7 +306,7 @@ export class KacchaChitthaService {
     if (lineItems.length === 0) throw new BadRequestException('KC must have at least one line item');
 
     for (const item of lineItems) {
-      if (new Decimal(item.total_weight_kg).lte(0)) {
+      if (item.rate_mode !== 'PER_NAG' && new Decimal(item.total_weight_kg).lte(0)) {
         throw new BadRequestException(`Line item ${item.id} has zero or negative weight`);
       }
     }
@@ -440,6 +452,24 @@ export class KacchaChitthaService {
 
       // STEP 9: Dashboard update happens via event consumer (not inline)
       this.logger.log(`KC ${kc.kc_number} authorized by ${userId}`);
+
+      // STEP 10: Push notification to all firm members (fire-and-forget)
+      // Fetch customer name for the notification body
+      this.dataSource.query(
+        `SELECT name FROM customers WHERE id = $1 LIMIT 1`,
+        [kc.customer_id],
+      ).then((rows: Array<{ name: string }>) => {
+        const customerName = rows[0]?.name ?? 'Unknown Customer';
+        return this.notificationService.sendKCAuthorized({
+          firmId,
+          authorizedBy: userId,
+          kcNumber: kc.kc_number,
+          customerName,
+          netPayable: String(totalNetPayable),
+        });
+      }).catch((err: Error) => {
+        this.logger.error(`Push notification dispatch failed: ${err.message}`);
+      });
 
       return this.findOne(id, firmId);
     } catch (error) {
@@ -629,6 +659,26 @@ export class KacchaChitthaService {
           idempotency_key: `${entryGroupId}:payment-${i}`,
         });
       }
+    }
+
+    // f. Overpayment: if cash/UPI received > net_payable, excess reduces customer's udhar balance
+    const totalCashAndUpi = payments
+      .filter(p => !p.is_udhar)
+      .reduce((sum, p) => sum.plus(p.amount), new Decimal(0));
+    const overpayment = Decimal.max(0, totalCashAndUpi.minus(totalNetPayable));
+    if (overpayment.gt(0)) {
+      entries.push({
+        ledger_type: LedgerType.CUSTOMER,
+        entry_type: EntryType.CREDIT,
+        amount: overpayment.toFixed(2),
+        balance_after: '0.00',
+        source_type: SourceType.KC_AUTHORIZATION,
+        source_id: kc.id,
+        entry_group_id: entryGroupId,
+        customer_id: kc.customer_id,
+        description: `KC ${kc.kc_number} — excess payment applied to reduce udhar balance`,
+        idempotency_key: `${entryGroupId}:overpayment-credit`,
+      });
     }
 
     return entries;

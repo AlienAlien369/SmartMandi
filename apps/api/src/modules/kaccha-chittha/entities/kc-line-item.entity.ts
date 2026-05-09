@@ -16,6 +16,8 @@ export class KcLineItem {
   @Column({ type: 'enum', enum: BaardanaSource }) baardana_source: BaardanaSource;
   @Column({ type: 'int', default: 0 }) baardana_quantity: number;
   @Column({ type: 'numeric', precision: 10, scale: 2, default: '0' }) baardana_cost: string;
+  /** PER_KG: gross = bags×weight×rate | PER_NAG: gross = bags×rate (rate_per_kg stores rate_per_nag) */
+  @Column({ type: 'text', default: 'PER_KG' }) rate_mode: 'PER_KG' | 'PER_NAG';
   @Column({ type: 'int', default: 0 }) sort_order: number;
 
   @ManyToOne(() => KacchaChittha, kc => kc.line_items)

@@ -11,6 +11,7 @@ import { ConfiguratorModule } from '../config/configurator.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { EventStoreModule } from '../events/event-store.module';
 import { AuditModule } from '../audit/audit.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AuditModule } from '../audit/audit.module';
     LedgerModule,
     EventStoreModule,
     AuditModule,
+    NotificationModule,
   ],
   controllers: [KacchaChitthaController],
   providers: [KacchaChitthaService, CommissionCalculatorService, ApmcFeeCalculatorService],

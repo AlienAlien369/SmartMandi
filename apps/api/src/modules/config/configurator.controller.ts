@@ -23,6 +23,14 @@ export class ConfiguratorController {
     return this.configuratorService.getActivePaymentModes(firmId);
   }
 
+  @Get('baardana')
+  @ApiOperation({ summary: 'Get current baardana config for the firm (pre-fills KC line item defaults)' })
+  getBaardanaConfig(@CurrentFirmId() firmId: string) {
+    return this.configuratorService.getBaardanaConfigForFirm(firmId).then(cfg =>
+      cfg ?? { baardana_provider: 'FIRM', default_bags: 1, cost_per_unit: null, unit_label: 'bag' },
+    );
+  }
+
   @Get('version')
   @ApiOperation({ summary: 'Get the current active config version' })
   getActiveVersion(@CurrentFirmId() firmId: string) {

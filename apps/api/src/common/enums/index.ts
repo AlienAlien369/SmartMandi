@@ -97,3 +97,10 @@ export enum CustomFieldType {
   BOOLEAN = 'BOOLEAN',
   SELECT = 'SELECT',
 }
+
+export enum FreightType {
+  SALARY = 'SALARY',
+  INAM = 'INAM',
+  KIRAYA = 'KIRAYA',
+  PARCHI = 'PARCHI',
+}

@@ -3,7 +3,7 @@
 > **Production-grade, multi-tenant SaaS for digital APMC mandi management**  
 > NestJS 10 · PostgreSQL 15 · React Native 0.74 · AWS SQS · Redis 7  
 > Offline-first · Event-driven · Append-only ledger · Row-Level Security · Dynamic RBAC  
-> **Phase 10 COMPLETE** — KC Rate Mode · Baardana/Grade Config · Push Notifications · Freight Payments · Ledger Fix
+> **Phase 11 COMPLETE** — PDF Generation (KC · Buyer Summary · Daybook) · SA Config Expansion
 
 ---
 
@@ -33,7 +33,7 @@ SF/
 │   │       │   ├── decorators/     # @RequirePermission, @CurrentUser, @CurrentFirmId
 │   │       │   └── interceptors/   # FirmContextInterceptor (RLS injection)
 │   │       └── database/
-│   │           └── migrations/     # 001–009 SQL migrations
+│   │           └── migrations/     # 001–012 SQL migrations
 │   └── mobile/                 # React Native 0.74 + Expo SDK 50
 │       └── src/
 │           ├── api/            # Typed API client + all endpoint wrappers
@@ -66,7 +66,7 @@ cd apps/api
 cp .env.example .env           # Fill in DB + JWT + Redis config
 docker compose up -d           # Start PostgreSQL + Redis
 npm install
-npm run migration:run          # Run migrations 001–009
+npm run migration:run          # Run migrations 001–012
 npm run start:dev              # Hot-reload dev server → http://localhost:3000
 # Swagger UI: http://localhost:3000/api
 ```
@@ -148,15 +148,15 @@ Super Admin
 |--------|-----------|
 | **Auth** | `POST /auth/login` · `POST /auth/refresh` · `GET /auth/me` |
 | **Trucks** | `POST /trucks` · `GET /trucks` · `GET /trucks/:id` · `POST /trucks/:id/arrive` · `POST /trucks/:id/close` · `DELETE /trucks/:id` *(SCHEDULED only)* |
-| **KCs** | `POST /kcs` · `GET /kcs` · `GET /kcs/:id` · `PATCH /kcs/:id/items` · `POST /kcs/:id/payments` · `POST /kcs/:id/authorize` · `POST /kcs/:id/cancel` |
+| **KCs** | `POST /kcs` · `GET /kcs` · `GET /kcs/:id` · `PATCH /kcs/:id/items` · `POST /kcs/:id/payments` · `POST /kcs/:id/authorize` · `POST /kcs/:id/cancel` · `GET /kcs/:id/pdf` *(SA-enabled, JWT via header or ?token=)* |
 | **Customers** | `POST /customers` · `GET /customers` · `GET /customers/:id` · `GET /customers/:id/history` · `PATCH /customers/:id` · `DELETE /customers/:id` |
 | **Config** | `GET /config` · `GET /config/versions` · `POST /config/versions` · `GET /config/grades` · `POST /config/grades` · `GET /config/baardana` · `POST /config/baardana` |
 | **Dashboard** | `GET /dashboard` *(date params)* · `POST /dashboard/summary-sheets` · `GET /dashboard/summary-sheets` |
-| **Reports** | `GET /reports/ledger` · `GET /reports/cash-flow` · `GET /reports/export/kcs` · `GET /reports/export/trucks` |
+| **Reports** | `GET /reports/ledger` · `GET /reports/cash-flow` · `GET /reports/export/kcs` · `GET /reports/export/trucks` · `GET /reports/buyer-summary/pdf` *(SA-enabled)* · `GET /reports/daybook/pdf` *(SA-enabled)* |
 | **Freight/Salary** | `POST /salary` · `GET /salary` · `PATCH /salary/:id` *(notes only)* · `DELETE /salary/:id` *(reversal entries)* |
 | **Users** | `POST /users` · `GET /users` *(active only)* · `PATCH /users/:id` · `DELETE /users/:id` *(soft-delete)* · `POST /users/fcm-token` |
 | **RBAC** | `GET /rbac/my-modules` · `GET /rbac/my-permissions` · `GET /rbac/firm-modules` · `GET/PUT /rbac/permissions/:role` |
-| **Super Admin** | `POST /super-admin/login` · `GET/POST/PUT/DELETE /super-admin/firms` · `GET/PUT /super-admin/firms/:id/modules` · `GET/PUT /super-admin/firms/:id/role-permissions/:role` |
+| **Super Admin** | `POST /super-admin/login` · `GET/POST/PUT/DELETE /super-admin/firms` · `GET/PUT /super-admin/firms/:id/modules` · `GET/PUT /super-admin/firms/:id/role-permissions/:role` · `GET/PUT /super-admin/firms/:id/config/apmc-fee` · `GET/PUT /super-admin/firms/:id/config/commission` · `GET/PUT /super-admin/firms/:id/config/baardana` · `GET/POST /super-admin/firms/:id/config/grades` · `PUT /super-admin/firms/:id/config/grades/:gradeId` · `GET/PUT /super-admin/firms/:id/config/pdf` |
 
 ---
 
@@ -198,6 +198,17 @@ WHERE effective_from <= :saleDate AND (effective_to IS NULL OR effective_to >= :
 net_payable = gross_amount - apmc_fee - commission
 # Baardana is tracked for firm analytics but NOT deducted from customer payable
 ```
+
+### PDF Generation (SA-Gated)
+| PDF | Endpoint | Flag |
+|-----|----------|------|
+| KC receipt | `GET /kcs/:id/pdf` | `firm_pdf_config.pdf_enabled` |
+| Buyer Summary | `GET /reports/buyer-summary/pdf` | `firm_pdf_config.buyer_summary_pdf_enabled` |
+| Daybook | `GET /reports/daybook/pdf` | `firm_pdf_config.daybook_pdf_enabled` |
+
+SA configures per firm: `PUT /super-admin/firms/:id/config/pdf`
+
+---
 
 ### Delete Strategies
 | Entity | Strategy | Reason |

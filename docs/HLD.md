@@ -1,5 +1,5 @@
 # Smart Mandi — High-Level Design (HLD)
-## Version 2.0 · Phase 10 Extended Features (All Phases Complete)
+## Version 2.0 · Phase 11 PDF Generation & SA Config Expansion (All Phases Complete)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Scale target:** 500 firms · 100,000 transactions/day · Financial auditability
 
-**Current phase:** Phase 10 — KC Rate Mode, Grade Config, Push Notifications, Freight Payments, Ledger Fix (all phases complete)
+**Current phase:** Phase 11 — PDF Generation, SA Config Expansion (all phases complete)
 
 ---
 
@@ -195,15 +195,17 @@ sequenceDiagram
 | Audit Log | Immutable change history | 1 |
 | Configurator | Versioned business rules | 2 |
 | Customers | Customer CRUD + ledger view + history API | 2 |
-| Kaccha Chittha | KC lifecycle + authorization engine | 2 |
+| Kaccha Chittha | KC lifecycle + authorization engine + PDF download | 2/11 |
 | Trucks | Truck lifecycle + purchase entries + delete guard | 3 |
 | Dashboard | Precomputed metrics, alerts, date filters | 4 |
-| Reports | Summary sheet, CSV export, cash flow | 4 |
+| Reports | Summary sheet, CSV export, cash flow, buyer summary PDF, daybook PDF | 4/11 |
 | Salary | Salary entries + ledger + reversal-on-delete | 5 |
 | Users | User CRUD + soft-delete (active filter) | 5 |
 | Custom Fields | Dynamic entity extension (field defs + values) | 6 |
 | RBAC | Module access control, dynamic role permissions | 7 |
-| Super Admin | Cross-firm management, module + permission assignment | 7 |
+| Super Admin | Cross-firm management, module + permission + full config assignment | 7/11 |
+| Notifications | FCM push on KC authorization | 10 |
+| PDF Config | SA-gated firm PDF settings (KC, buyer summary, daybook) | 11 |
 
 ---
 
@@ -335,4 +337,4 @@ sequenceDiagram
 
 ---
 
-*Last updated: Phase 9 — CRUD Completion, Dynamic RBAC & Premium UI (all phases complete)*
+*Last updated: Phase 11 — PDF Generation, SA Config Expansion (all phases complete)*

@@ -235,6 +235,8 @@ You are a Backend Engineer managing the RBAC system in Smart Mandi.
 4. firm_module_access and role_permissions are per-firm — RLS applies
 5. After login, mobile fetches /rbac/my-modules and stores in Redux (accessibleModuleIds)
 6. 11 platform modules: DASHBOARD, TRUCKS, KCS, CUSTOMERS, LEDGER, REPORTS, SUMMARY_SHEETS, SALARY (tagged: freight), USERS, SETTINGS, CONFIG
+7. SA firm config endpoints use `/config/` sub-prefix: `/super-admin/firms/:firmId/config/apmc-fee|commission|baardana|grades|pdf`
+8. `firm_pdf_config` table (migration 010–012) controls PDF generation — check `pdf_enabled` / `buyer_summary_pdf_enabled` / `daybook_pdf_enabled` before generating PDFs
 
 ## Scope
 - /apps/api/src/modules/rbac/**

@@ -1,6 +1,6 @@
 # Smart Mandi — Feature Tracking (Persistent Memory)
 ## Updated after every phase — agent context file
-## Current: Phase 10 Extended Features (COMPLETE)
+## Current: Phase 11 PDF Generation & SA Config Expansion (COMPLETE)
 
 ---
 
@@ -269,6 +269,42 @@
 
 ---
 
+## ✅ PHASE 11 — PDF Generation & SA Config Expansion (COMPLETE)
+
+### Firm PDF Config
+- [x] `firm_pdf_config` table (migration 010): SA-controlled PDF settings per firm
+  - `pdf_enabled` — enables KC PDF download for the firm
+  - `pdf_format` TEXT NOT NULL DEFAULT 'STANDARD' (single format for now)
+  - `firm_short_name` TEXT — appears on PDF headers
+  - `footer_text` TEXT DEFAULT 'RATES INCLUSIVE OF ALL TAXES'
+- [x] Migration 011: `buyer_summary_pdf_enabled BOOLEAN` added to `firm_pdf_config`
+- [x] Migration 012: `daybook_pdf_enabled BOOLEAN` added to `firm_pdf_config`
+- [x] `FirmPdfConfig` entity in `apps/api/src/modules/kaccha-chittha/entities/`
+- [x] RLS policy: SA bypasses; firm users can only read their own `firm_pdf_config`
+
+### PDF Services (pdfkit)
+- [x] `KcPdfService` (kaccha-chittha module) — thermal receipt-style single KC PDF; checks `pdf_enabled` via `firm_pdf_config`; uses `firm_short_name` + `footer_text` from config
+- [x] `BuyerSummaryPdfService` (reports module) — truck-grouped buyer summary A4-landscape PDF; checks `buyer_summary_pdf_enabled`; columns: C NO. / GR-NO / Source / GROSS / FREIGHT / COMMISSION / TELE&POST / BARDANA / NET
+- [x] `DaybookPdfService` (reports module) — truck-wise day book PDF; checks `daybook_pdf_enabled`; columns: PURCHA / NAME / Case / WEIGHT / GROSS AMT / %APMC / @BARDANA / @CARTAGE / NET AMT
+
+### New PDF Download Endpoints
+- [x] `GET /kcs/:id/pdf` — download an authorized KC as PDF; JWT via `Authorization` header or `?token=` query param; returns `application/pdf`
+- [x] `GET /reports/buyer-summary/pdf?date_from=&date_to=` — buyer summary PDF for date range; must be SA-enabled per firm; returns `application/pdf`
+- [x] `GET /reports/daybook/pdf?date_from=&date_to=` — truck-wise daybook PDF for date range; must be SA-enabled per firm; returns `application/pdf`
+
+### SA PDF Config API
+- [x] `GET /super-admin/firms/:firmId/config/pdf` — get firm's PDF config
+- [x] `PUT /super-admin/firms/:firmId/config/pdf` — set PDF config `{ pdf_enabled, buyer_summary_pdf_enabled, daybook_pdf_enabled, firm_short_name, footer_text }`
+
+### SA Firm Config Endpoints (consolidated under /config/ prefix)
+- [x] `GET/PUT /super-admin/firms/:firmId/config/apmc-fee` — read/set APMC fee config for any firm (closes old version, creates new)
+- [x] `GET/PUT /super-admin/firms/:firmId/config/commission` — read/set commission config for any firm
+- [x] `GET/PUT /super-admin/firms/:firmId/config/baardana` — read/set baardana config for any firm
+- [x] `GET/POST /super-admin/firms/:firmId/config/grades` — list / create grade configs per firm
+- [x] `PUT /super-admin/firms/:firmId/config/grades/:gradeId` — update a grade's code/label/sort_order
+
+---
+
 ## ✅ PHASE 10 — Extended Features & Bug Fixes (COMPLETE)
 
 ### KC Rate Mode (Configurable per Firm)
@@ -364,6 +400,8 @@
 | Salary delete strategy | Write reversal ledger entries, then hard-delete salary_entry row | Ledger is append-only; salary_entry row deletion preserves accounting integrity via reversal entries |
 | Truck delete guard | Only SCHEDULED trucks can be deleted | ARRIVED/CLOSED trucks have financial records (PurchaseEntry, inam ledger); deleting would orphan them |
 | Dynamic RBAC | PermissionsGuard queries role_module_permissions per request | Runtime configurability — FIRM_HEAD and SA can change permissions without redeployment |
+| PDF generation | Three separate PDF services (KcPdfService, BuyerSummaryPdfService, DaybookPdfService) — each gated by a flag in firm_pdf_config | Allows SA to control PDF availability per firm without code changes |
+| SA config prefix | SA firm config endpoints use `/super-admin/firms/:id/config/<feature>` | Consistent sub-prefix prevents route collisions with firm management endpoints |
 
 ---
 
@@ -383,6 +421,7 @@
 - Base URL for API does NOT include `firm_id` — firm ID comes from JWT claim only
 - `SalaryController` is tagged `freight` in Swagger — module name in code is `salary`
 - `graphify-out/` directory contains generated knowledge graph artifacts — not committed to git
+- PDF uses `pdfkit` + monospace Courier font for thermal receipt alignment — not a web/HTML PDF; changing layout requires careful column-width arithmetic
 
 ---
 
@@ -409,4 +448,6 @@ When resuming from a new session, read this file first. Key facts:
 18. **Push notifications** — KC authorization triggers FCM to authorizer + FIRM_HEAD via NotificationService
 19. **Freight = Salary module** — `salary_entries` table tagged `freight` in API; has `freight_type` column
 20. **API base path has no firm_id in URL** — `firm_id` comes from JWT exclusively; routes are `/api/v1/trucks` not `/api/v1/:firmId/trucks`
-21. **Migrations are 001–009** — not 001–005 as some old docs state; migrations 006–009 added baardana, rate_mode, freight_type, grades
+21. **Migrations are 001–012** — migrations 006–009 added baardana, rate_mode, freight_type, grades; 010–012 added firm_pdf_config (KC PDF, buyer summary PDF, daybook PDF)
+22. **PDF is SA-gated** — `pdf_enabled`, `buyer_summary_pdf_enabled`, `daybook_pdf_enabled` flags in `firm_pdf_config`; SA sets via `PUT /super-admin/firms/:firmId/config/pdf`; PDF endpoints accept JWT via `Authorization` header or `?token=` query param
+23. **SA config endpoints use /config/ prefix** — all SA firm config routes: `/super-admin/firms/:firmId/config/apmc-fee|commission|baardana|grades|pdf`

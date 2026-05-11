@@ -39,10 +39,10 @@ const MoreStack    = createNativeStackNavigator<MoreStackParamList>();
 
 // ─── Shared premium header options for all stacks ────────────────────
 const STACK_OPTS = {
-  headerStyle: { backgroundColor: colors.surface },
+  headerStyle: { backgroundColor: colors.surfaceRaised },
   headerTitleStyle: {
     fontSize: typography.size.base,
-    fontWeight: typography.weight.semibold,
+    fontWeight: typography.weight.bold,
     color: colors.textPrimary,
   } as any,
   headerTintColor: colors.primary,
@@ -97,7 +97,7 @@ function MoreNavigator() {
   );
 }
 
-// ─── Tab icon with active pill highlight ─────────────────────────────
+// ─── Tab icon with premium green pill highlight ───────────────────────
 const TAB_ICONS: Record<string, string> = {
   Home: '⊕', Trucks: '🚛', KC: '📋', Customers: '👨‍🌾', More: '⋯',
 };
@@ -105,7 +105,8 @@ const TAB_ICONS: Record<string, string> = {
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Text style={[styles.iconEmoji, { opacity: focused ? 1 : 0.38 }]}>
+      {focused && <View style={styles.iconDot} />}
+      <Text style={[styles.iconEmoji, { opacity: focused ? 1 : 0.42 }]}>
         {TAB_ICONS[label] ?? '•'}
       </Text>
     </View>
@@ -121,7 +122,6 @@ export function MainNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => {
-        // Map route name → display label for icon lookup
         const labelMap: Record<string, string> = { Dashboard: 'Home', Trucks: 'Trucks', KCs: 'KC', Customers: 'Customers', More: 'More' };
         const label = labelMap[route.name] ?? route.name;
         return {
@@ -129,23 +129,22 @@ export function MainNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
-            height: 58 + insets.bottom,
-            paddingBottom: insets.bottom + 6,
+            height: 62 + insets.bottom,
+            paddingBottom: insets.bottom + 8,
             paddingTop: 8,
             backgroundColor: colors.surfaceRaised,
-            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopWidth: 1,
             borderTopColor: colors.border,
-            elevation: 24,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -3 },
+            // Green-tinted shadow looking upward
+            shadowColor: '#16a34a',
+            shadowOffset: { width: 0, height: -4 },
             shadowOpacity: 0.08,
-            shadowRadius: 16,
+            shadowRadius: 20,
+            elevation: 20,
           },
           tabBarLabelStyle: {
-            fontSize: 10,
-            fontWeight: '600' as any,
-            letterSpacing: 0.2,
-            marginTop: -2,
+            fontSize: 10, fontWeight: '700' as any,
+            letterSpacing: 0.3, marginTop: -2,
           },
           headerShown: false,
         };
@@ -162,11 +161,16 @@ export function MainNavigator() {
 
 const styles = StyleSheet.create({
   iconWrap: {
-    width: 40, height: 26, borderRadius: 13,
+    width: 44, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
   iconWrapActive: {
     backgroundColor: colors.primaryLight,
+  },
+  iconDot: {
+    position: 'absolute', top: -8,
+    width: 4, height: 4, borderRadius: 2,
+    backgroundColor: colors.primary,
   },
   iconEmoji: { fontSize: 18, lineHeight: 22 },
 });

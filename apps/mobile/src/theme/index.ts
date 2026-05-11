@@ -1,76 +1,83 @@
-import { Platform, Appearance } from 'react-native';
+import { Platform } from 'react-native';
 
-const isDark = Appearance.getColorScheme() === 'dark';
+// ─────────────────────────────────────────────────────────────────────────────
+//  Smart Mandi — Premium Emerald Green Theme
+//  Philosophy: clean white surfaces, rich botanical greens, life-giving shadows
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const colors = {
-  // Brand — Deep Saffron
-  primary: '#E8600A',
-  primaryDark: '#BF4D05',
-  primaryLight: '#FDF0E8',
+  // ── Brand — Botanical Emerald ───────────────────────────────────────────────
+  primary:        '#16a34a',   // Green-600  · main CTAs, active states
+  primaryDark:    '#15803d',   // Green-700  · pressed / hover states
+  primaryDarker:  '#14532d',   // Green-900  · deep forest accents
+  primaryLight:   '#dcfce7',   // Green-100  · light badges, active chip bg
+  primaryMid:     '#4ade80',   // Green-400  · glow accents, shimmer highlights
+  primaryGlow:    'rgba(22,163,74,0.18)',   // translucent glow overlay
 
-  // Surfaces — Warm, never cold blue-white
-  surface: isDark ? '#0F0F0D' : '#FAFAF8',
-  surfaceRaised: isDark ? '#1A1A18' : '#FFFFFF',
-  surfaceMuted: isDark ? '#242420' : '#F2EFE9',
-  surfaceOverlay: isDark ? 'rgba(240,237,232,0.04)' : 'rgba(26,26,24,0.04)',
+  // ── Accent — Emerald (teal-green companion) ─────────────────────────────────
+  accent:         '#059669',   // Emerald-600 · secondary brand moments
+  accentLight:    '#d1fae5',   // Emerald-100
 
-  // Text
-  textPrimary: isDark ? '#F0EDE8' : '#1A1A18',
-  textSecondary: isDark ? '#9E9B96' : '#6B6860',
-  textMuted: isDark ? '#6B6860' : '#A09D97',
-  textInverse: '#FFFFFF',
+  // ── Surfaces — Crisp white with botanical undertone ────────────────────────
+  surface:        '#f5fdf7',   // Main screen bg — white kissed by green
+  surfaceRaised:  '#ffffff',   // Cards, modals — pure white
+  surfaceMuted:   '#f0fdf4',   // Green-50   · muted sections, input bg
+  surfaceOverlay: 'rgba(22,163,74,0.05)',
 
-  // Semantic
-  success: '#1A7F4B',
-  warning: '#B45309',
-  danger: '#C0392B',
-  info: '#1761B0',
+  // ── Text ───────────────────────────────────────────────────────────────────
+  textPrimary:   '#0d1f14',    // Near-black with deep green soul
+  textSecondary: '#4b5e54',    // Muted green-gray
+  textMuted:     '#94a3a0',    // Soft gray-green for hints
+  textInverse:   '#ffffff',
 
-  successBg: '#EAF5EE',
-  warningBg: '#FEF3E2',
-  dangerBg: '#FDECEA',
-  infoBg: '#E8F0FB',
+  // ── Semantic ───────────────────────────────────────────────────────────────
+  success:    '#16a34a',       // = primary (green IS success here)
+  warning:    '#d97706',       // Amber-600
+  danger:     '#dc2626',       // Red-600
+  info:       '#0891b2',       // Cyan-600
 
-  // Borders
-  border: isDark ? 'rgba(240,237,232,0.10)' : 'rgba(26,26,24,0.10)',
-  borderStrong: isDark ? 'rgba(240,237,232,0.20)' : 'rgba(26,26,24,0.20)',
+  successBg:  '#dcfce7',
+  warningBg:  '#fef3c7',
+  dangerBg:   '#fee2e2',
+  infoBg:     '#e0f2fe',
 
-  // Status (truck/KC)
-  statusScheduled: '#1761B0',
-  statusArrived: '#B45309',
-  statusClosed: '#1A7F4B',
-  statusDraft: '#6B6860',
-  statusAuthorized: '#1A7F4B',
-  statusCancelled: '#C0392B',
-  statusPending: '#6B6860',
+  // ── Borders — green-tinted hairlines ───────────────────────────────────────
+  border:       'rgba(22,163,74,0.14)',
+  borderStrong: 'rgba(22,163,74,0.28)',
 
-  // Legacy aliases for existing screens that reference these keys
-  background: isDark ? '#0F0F0D' : '#FAFAF8',
-  error: '#C0392B',
-  divider: isDark ? 'rgba(240,237,232,0.10)' : 'rgba(26,26,24,0.10)',
-  borderLight: isDark ? 'rgba(240,237,232,0.06)' : 'rgba(26,26,24,0.06)',
-  textTertiary: isDark ? '#6B6860' : '#A09D97',
-  textLink: '#E8600A',
-  primaryDarkLegacy: '#BF4D05',
-  accent: '#E8600A',
-  accentLight: '#FDF0E8',
-  chartPrimary: '#E8600A',
-  chartSecondary: '#B45309',
-  chartTertiary: '#1761B0',
-  chartQuaternary: '#C0392B',
-  surfaceElevated: isDark ? '#1A1A18' : '#FFFFFF',
+  // ── Status chips ───────────────────────────────────────────────────────────
+  statusScheduled:  '#0891b2',  // Cyan
+  statusArrived:    '#d97706',  // Amber
+  statusClosed:     '#16a34a',  // Green
+  statusDraft:      '#94a3a0',  // Muted
+  statusAuthorized: '#16a34a',  // Green
+  statusCancelled:  '#dc2626',  // Red
+  statusPending:    '#94a3a0',  // Muted
+
+  // ── Legacy aliases (keep backward compat) ──────────────────────────────────
+  background:        '#f5fdf7',
+  error:             '#dc2626',
+  divider:           'rgba(22,163,74,0.10)',
+  borderLight:       'rgba(22,163,74,0.07)',
+  textTertiary:      '#94a3a0',
+  textLink:          '#16a34a',
+  primaryDarkLegacy: '#15803d',
+  chartPrimary:      '#16a34a',
+  chartSecondary:    '#059669',
+  chartTertiary:     '#0891b2',
+  chartQuaternary:   '#dc2626',
+  surfaceElevated:   '#ffffff',
 } as const;
 
 export const typography = {
-  display:  { fontSize: 28, fontWeight: '600' as const, letterSpacing: -0.5 },
-  title:    { fontSize: 20, fontWeight: '600' as const, letterSpacing: -0.3 },
-  heading:  { fontSize: 17, fontWeight: '600' as const },
+  display:  { fontSize: 28, fontWeight: '700' as const, letterSpacing: -0.6 },
+  title:    { fontSize: 20, fontWeight: '700' as const, letterSpacing: -0.4 },
+  heading:  { fontSize: 17, fontWeight: '600' as const, letterSpacing: -0.1 },
   body:     { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
   caption:  { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
-  label:    { fontSize: 11, fontWeight: '600' as const, letterSpacing: 0.6 },
-  number:   { fontSize: 22, fontWeight: '700' as const },
+  label:    { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.8 },
+  number:   { fontSize: 22, fontWeight: '800' as const },
   mono:     { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 14 },
-  // Legacy aliases so existing screens don't break
   size: { xs: 11, sm: 13, base: 15, md: 16, lg: 18, xl: 20, '2xl': 24, '3xl': 30, '4xl': 36 },
   weight: { regular: '400' as const, medium: '500' as const, semibold: '600' as const, bold: '700' as const, extrabold: '800' as const },
   fontFamily: { regular: 'System', medium: 'System', semibold: 'System', bold: 'System' },
@@ -80,37 +87,51 @@ export const typography = {
 export const spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
   screenPadding: 16, cardGap: 12, sectionGap: 28,
-  // Legacy numeric keys
   0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32, 10: 40, 12: 48, 16: 64,
 };
 
 export const radius = {
-  xs: 4, sm: 8, md: 12, lg: 16, xl: 24, full: 9999,
+  xs: 4, sm: 8, md: 14, lg: 18, xl: 26, full: 9999,
 };
 
+// ── Green-tinted shadows — the "secret sauce" of this theme ──────────────────
+// Casting green-hued light makes cards feel botanical and alive instead of flat.
 export const elevation = {
   card: {
-    shadowColor: '#1A1A18',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowColor:   '#16a34a',
+    shadowOffset:  { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius:  10,
+    elevation: 3,
+  },
+  modal: {
+    shadowColor:   '#16a34a',
+    shadowOffset:  { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius:  20,
+    elevation: 8,
   },
   sheet: {
-    shadowColor: '#1A1A18',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor:   '#16a34a',
+    shadowOffset:  { width: 0, height: -3 },
+    shadowOpacity: 0.12,
+    shadowRadius:  18,
+    elevation: 12,
   },
 };
 
-// Legacy alias
 export const shadow = {
   sm: elevation.card,
-  md: { shadowColor: '#1A1A18', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+  md: {
+    shadowColor:   '#16a34a',
+    shadowOffset:  { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius:  14,
+    elevation: 5,
+  },
   lg: elevation.sheet,
 };
 
 export const theme = { colors, typography, spacing, radius, elevation, shadow };
 export default theme;
+

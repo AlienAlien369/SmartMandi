@@ -173,13 +173,16 @@ export function DashboardScreen() {
           <>
             {/* ── Hero card: Gross Sales ── */}
             <View style={styles.heroCard}>
+              {/* decorative depth orbs */}
+              <View style={styles.heroOrb1} />
+              <View style={styles.heroOrb2} />
               <View style={styles.heroLeft}>
                 <Text style={styles.heroLabel}>Total Gross Sales</Text>
                 <Text style={styles.heroValue}>{fmtFull(data?.total_sales_amount)}</Text>
                 <Text style={styles.heroSub}>Authorized KCs only</Text>
               </View>
               <View style={styles.heroIconBg}>
-                <Text style={styles.heroIcon}>��</Text>
+                <Text style={styles.heroIcon}>🌾</Text>
               </View>
             </View>
 
@@ -288,17 +291,40 @@ const styles = StyleSheet.create({
   // period label
   periodLabel: { fontSize: typography.size.xs, color: colors.textMuted, marginBottom: spacing[4] },
 
-  // hero
+  // ── Hero card — deep green with shimmer orbs ────────────────────────────
   heroCard: {
-    borderRadius: radius.xl, backgroundColor: colors.primary,
-    padding: spacing[5], flexDirection: 'row', alignItems: 'center',
-    marginBottom: spacing[1], ...shadow.md,
+    borderRadius: radius.xl,
+    backgroundColor: '#15803d',
+    padding: spacing[5],
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing[1],
+    overflow: 'hidden',
+    ...shadow.md,
+  },
+  heroOrb1: {
+    position: 'absolute', top: -30, right: 80,
+    width: 110, height: 110, borderRadius: 55,
+    backgroundColor: 'rgba(74,222,128,0.15)',
+  },
+  heroOrb2: {
+    position: 'absolute', bottom: -20, right: -10,
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(5,150,105,0.25)',
   },
   heroLeft: { flex: 1 },
-  heroLabel: { fontSize: typography.size.xs, color: 'rgba(255,255,255,0.75)', fontWeight: typography.weight.medium, textTransform: 'uppercase', letterSpacing: 0.8 },
-  heroValue: { fontSize: 28, fontWeight: typography.weight.extrabold, color: '#fff', marginTop: 4 },
-  heroSub: { fontSize: typography.size.xs, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
-  heroIconBg: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  heroLabel: {
+    fontSize: typography.size.xs, color: 'rgba(240,253,244,0.70)',
+    fontWeight: typography.weight.semibold, textTransform: 'uppercase', letterSpacing: 1.0,
+  },
+  heroValue: { fontSize: 30, fontWeight: typography.weight.extrabold, color: '#fff', marginTop: 4, letterSpacing: -0.5 },
+  heroSub: { fontSize: typography.size.xs, color: 'rgba(240,253,244,0.55)', marginTop: 5 },
+  heroIconBg: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+  },
   heroIcon: { fontSize: 26 },
 
   // section

@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform, FlatList,
+  Modal, TextInput, KeyboardAvoidingView, Platform, FlatList, Linking,
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
 import type { RouteProp } from '@react-navigation/native';
 import { kcsApi, configApi } from '../../api/endpoints';
 import type { KacchaChittha, KCStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 import { usePermissions } from '../../hooks/usePermissions';
+import type { RootState } from '../../store';
 
 type RouteT = RouteProp<KCStackParamList, 'KCDetail'>;
 
@@ -20,6 +22,7 @@ export function KCDetailScreen() {
   const { params } = useRoute<RouteT>();
   const queryClient = useQueryClient();
   const perms = usePermissions('KC');
+  const accessToken = useSelector((state: RootState) => state.auth.accessToken);
 
   // Cancel modal state
   const [cancelModal, setCancelModal] = useState(false);
@@ -189,6 +192,21 @@ export function KCDetailScreen() {
             <View style={styles.divider} />
             <AmountRow label="Net Payable" value={kc.total_net_payable ?? '0'} color={colors.primary} bold />
           </View>
+        )}
+
+        {/* PDF Download (AUTHORIZED only) */}
+        {kc.status === 'AUTHORIZED' && accessToken && (
+          <TouchableOpacity
+            style={styles.pdfBtn}
+            onPress={() => {
+              const url = kcsApi.getPdfUrl(params.kcId, accessToken);
+              Linking.openURL(url).catch(() =>
+                Alert.alert('Error', 'Could not open PDF. Make sure a PDF viewer is installed.'),
+              );
+            }}
+          >
+            <Text style={styles.pdfBtnText}>📄  Download PDF Receipt</Text>
+          </TouchableOpacity>
         )}
 
         {/* Line Items */}
@@ -424,5 +442,7 @@ const styles = StyleSheet.create({
   modalCancelText: { color: colors.textSecondary, fontWeight: typography.weight.medium },
   modalDestructBtn: { flex: 1, backgroundColor: colors.danger, borderRadius: radius.md, paddingVertical: spacing[3], alignItems: 'center' },
   modalDestructText: { color: colors.textInverse, fontWeight: typography.weight.semibold },
+  pdfBtn: { backgroundColor: '#1a1a2e', borderRadius: radius.md, paddingVertical: spacing[4], alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: spacing[2], ...shadow.sm },
+  pdfBtnText: { color: '#ffffff', fontSize: typography.size.base, fontWeight: typography.weight.semibold },
   flex1: { flex: 1 },
 });

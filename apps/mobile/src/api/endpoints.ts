@@ -28,6 +28,9 @@ export const kcsApi = {
   addPayment: (id: string, data: object) => api.post(`/kcs/${id}/payments`, data),
   authorize: (id: string, data: object) => api.post(`/kcs/${id}/authorize`, data),
   cancel: (id: string, data: object) => api.post(`/kcs/${id}/cancel`, data),
+  /** Returns URL that can be opened with Linking.openURL — token passed as query param */
+  getPdfUrl: (id: string, accessToken: string): string =>
+    `${API_BASE_URL}/kcs/${id}/pdf?token=${encodeURIComponent(accessToken)}`,
 };
 
 // ─── Customers ───────────────────────────────────────────────────────────────
@@ -154,4 +157,8 @@ export const superAdminApi = {
     axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/grades/${gradeId}?admin_token=${token}`, data),
   toggleGrade: (firmId: string, gradeId: string, token: string) =>
     axios.delete(`${SA_BASE}/super-admin/firms/${firmId}/config/grades/${gradeId}?admin_token=${token}`),
+  getPdfConfig: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/pdf?admin_token=${token}`),
+  setPdfConfig: (firmId: string, data: object, token: string) =>
+    axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/pdf?admin_token=${token}`, data),
 };

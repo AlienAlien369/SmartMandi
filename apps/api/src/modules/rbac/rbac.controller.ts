@@ -373,16 +373,35 @@ export class SuperAdminController {
     return this.configuratorService.updateGradeForFirm(firmId, gradeId, body);
   }
 
-  /** Toggle a grade active/inactive (soft delete) (SA) */
+  // ── Firm Config: PDF ──────────────────────────────────────────────────────
+
+  /** Get PDF config for a firm (SA) */
   @Public()
-  @Delete('firms/:firmId/config/grades/:gradeId')
-  @ApiOperation({ summary: 'Toggle a grade active/inactive for a firm (SA only)' })
-  async toggleFirmGrade(
+  @Get('firms/:firmId/config/pdf')
+  @ApiOperation({ summary: 'Get PDF config for a firm (SA only)' })
+  async getFirmPdfConfig(
     @Param('firmId') firmId: string,
-    @Param('gradeId') gradeId: string,
     @Query('admin_token') adminToken: string,
   ) {
     this.verifySAToken(adminToken);
-    return this.configuratorService.toggleGradeActive(firmId, gradeId);
+    return this.rbacService.getFirmPdfConfig(firmId);
+  }
+
+  /** Set PDF config for a firm (SA) */
+  @Public()
+  @Put('firms/:firmId/config/pdf')
+  @ApiOperation({ summary: 'Set PDF config for a firm (SA only)' })
+  async setFirmPdfConfig(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: {
+      pdf_enabled: boolean;
+      firm_short_name?: string;
+      footer_text?: string;
+    },
+  ) {
+    this.verifySAToken(adminToken);
+    return this.rbacService.setFirmPdfConfig(firmId, body);
   }
 }
+

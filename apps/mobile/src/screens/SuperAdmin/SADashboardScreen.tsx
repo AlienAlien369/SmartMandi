@@ -61,6 +61,11 @@ export function SADashboardScreen() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const setConfigField = (k: keyof typeof EMPTY_CONFIG) => (v: string) => setConfigForm(p => ({ ...p, [k]: v }));
 
+  // PDF config state (part of config modal)
+  const [pdfEnabled, setPdfEnabled] = useState(false);
+  const [pdfShortName, setPdfShortName] = useState('');
+  const [pdfFooter, setPdfFooter] = useState('');
+
   // Grades modal state
   type GradeItem = { id: string; grade_code: string; grade_label: string; sort_order: number; is_active: boolean };
   const [gradeList, setGradeList] = useState<GradeItem[]>([]);
@@ -113,14 +118,16 @@ export function SADashboardScreen() {
     setLoadingConfig(true);
     setActiveModal('config');
     try {
-      const [apmcRes, commRes, baardanaRes] = await Promise.all([
+      const [apmcRes, commRes, baardanaRes, pdfRes] = await Promise.all([
         superAdminApi.getApmcFeeConfig(firm.id, saToken),
         superAdminApi.getCommissionConfig(firm.id, saToken),
         superAdminApi.getBaardanaConfig(firm.id, saToken),
+        superAdminApi.getPdfConfig(firm.id, saToken),
       ]);
       const apmc = apmcRes.data as any;
       const comm = commRes.data as any;
       const baard = baardanaRes.data as any;
+      const pdf = pdfRes.data as any;
       setConfigForm({
         fee_type: apmc.fee_type ?? 'PERCENTAGE',
         fee_value: apmc.fee_value != null ? String(apmc.fee_value) : '',
@@ -136,6 +143,9 @@ export function SADashboardScreen() {
         baardana_cost_per_unit: baard.cost_per_unit != null ? String(baard.cost_per_unit) : '',
         rate_mode: baard.rate_mode ?? 'PER_KG',
       });
+      setPdfEnabled(pdf?.pdf_enabled ?? false);
+      setPdfShortName(pdf?.firm_short_name ?? '');
+      setPdfFooter(pdf?.footer_text ?? '');
     } catch { setConfigForm(EMPTY_CONFIG); }
     finally { setLoadingConfig(false); }
   };
@@ -286,9 +296,14 @@ export function SADashboardScreen() {
           cost_per_unit: configForm.baardana_cost_per_unit ? parseFloat(configForm.baardana_cost_per_unit) : 0,
           rate_mode: configForm.rate_mode,
         }, saToken),
+        superAdminApi.setPdfConfig(selectedFirm.id, {
+          pdf_enabled: pdfEnabled,
+          firm_short_name: pdfShortName.trim() || null,
+          footer_text: pdfFooter.trim() || null,
+        }, saToken),
       ]);
     },
-    onSuccess: () => { closeModal(); Alert.alert('Saved', 'Rates, fees & baardana config updated.'); },
+    onSuccess: () => { closeModal(); Alert.alert('Saved', 'Rates, fees, baardana & PDF config updated.'); },
     onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to save config'),
   });
 
@@ -604,18 +619,41 @@ export function SADashboardScreen() {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={saveConfigMutation.isPending ? [styles.primaryBtn, { marginTop: spacing[4] }, { opacity: 0.6 }] : [styles.primaryBtn, { marginTop: spacing[4] }]}
-                  onPress={() => saveConfigMutation.mutate()}
-                  disabled={saveConfigMutation.isPending}
-                >
-                  {saveConfigMutation.isPending
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.primaryBtnText}>{'Save Configuration'}</Text>
-                  }
-                </TouchableOpacity>
+                {/* ── PDF Receipt ── */}
+                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
+                  <View style={styles.configSectionHeader}>
+                    <Text style={styles.configSectionIcon}>{'📄'}</Text>
+                    <View>
+                      <Text style={styles.configSectionTitle}>{'PDF Receipt'}</Text>
+                      <Text style={styles.configHint}>{'Allow firm to download KC receipts as PDF'}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[3] }}>
+                    <Text style={styles.fieldLabel}>{'Enable PDF Download'}</Text>
+                    <Switch value={pdfEnabled} onValueChange={setPdfEnabled} />
+                  </View>
+                  {pdfEnabled && (
+                    <>
+                      <ConfigField label="Firm Short Name (e.g. NP)" value={pdfShortName} onChangeText={setPdfShortName} placeholder="e.g. NP" />
+                      <ConfigField label="Footer Text" value={pdfFooter} onChangeText={setPdfFooter} placeholder="RATES INCLUSIVE OF ALL TAXES" />
+                    </>
+                  )}
+                </View>
+
               </ScrollView>
             )}
+            <View style={styles.saveBar}>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => saveConfigMutation.mutate()}
+                disabled={saveConfigMutation.isPending}
+              >
+                {saveConfigMutation.isPending
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.primaryBtnText}>{'💾  Save Configuration'}</Text>
+                }
+              </TouchableOpacity>
+            </View>
           </View>}
         </KeyboardAvoidingView>
       </Modal>

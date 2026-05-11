@@ -12,7 +12,7 @@
  *     Must re-run after every cable reconnect.
  */
 export const API_BASE_URL = __DEV__
-  ? 'http://192.168.1.6:3000/api/v1'   // ← home WiFi (change IP if your network changes)
+  ? 'http://192.168.1.36:3000/api/v1'  // ← home WiFi (change IP if your network changes)
   // ? 'http://10.10.7.32:3000/api/v1' // ← office WiFi
   // ? 'http://localhost:3000/api/v1'   // ← USB only (needs: npm run adb:setup)
   : 'https://api.smartmandi.app/api/v1';

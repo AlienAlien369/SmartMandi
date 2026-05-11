@@ -1,9 +1,13 @@
 import {
   Controller, Get, Post, Patch, Body, Param,
   Query, UseGuards, HttpCode, HttpStatus, Headers,
+  Res, UnauthorizedException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import { KacchaChitthaService } from './kaccha-chittha.service';
+import { KcPdfService } from './kc-pdf.service';
 import {
   CreateKCDto, AddPaymentDto, AuthorizeKCDto,
   CancelKCDto, UpdateLineItemsDto,
@@ -12,6 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser, CurrentFirmId } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { JwtPayload } from '../auth/jwt.strategy';
 import { KCStatus } from '../../common/enums';
 
@@ -22,7 +27,11 @@ const MODULE = 'KC';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('kcs')
 export class KacchaChitthaController {
-  constructor(private readonly service: KacchaChitthaService) {}
+  constructor(
+    private readonly service: KacchaChitthaService,
+    private readonly pdfService: KcPdfService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   @Post()
   @RequirePermission(MODULE, 'create')
@@ -47,6 +56,40 @@ export class KacchaChitthaController {
     @Query('limit') limit?: number,
   ) {
     return this.service.findAll(firmId, { date, date_from, date_to, search, truck_id, customer_id, status, page, limit });
+  }
+
+  /**
+   * Download KC as PDF. Accepts JWT via Authorization header OR ?token= query param
+   * (query param is used for direct browser/Linking.openURL downloads from mobile).
+   */
+  @Get(':id/pdf')
+  @Public()
+  @ApiOperation({ summary: 'Download authorized KC as PDF' })
+  async downloadPdf(
+    @Param('id') id: string,
+    @Query('token') queryToken: string | undefined,
+    @Headers('authorization') authHeader: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    // Resolve JWT from header or query param
+    const rawToken = queryToken ?? authHeader?.replace(/^Bearer\s+/i, '');
+    if (!rawToken) throw new UnauthorizedException('Authentication required');
+
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(rawToken);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const pdfBuffer = await this.pdfService.generateKcPdf(id, payload.firm_id);
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="KC-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
   }
 
   @Get(':id')

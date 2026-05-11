@@ -59,10 +59,13 @@ export function SADashboardScreen() {
   // Config modal state
   const [configForm, setConfigForm] = useState(EMPTY_CONFIG);
   const [loadingConfig, setLoadingConfig] = useState(false);
+  const [configTab, setConfigTab] = useState<'rates' | 'baardana' | 'pdf'>('rates');
   const setConfigField = (k: keyof typeof EMPTY_CONFIG) => (v: string) => setConfigForm(p => ({ ...p, [k]: v }));
 
   // PDF config state (part of config modal)
   const [pdfEnabled, setPdfEnabled] = useState(false);
+  const [pdfBuyerSummaryEnabled, setPdfBuyerSummaryEnabled] = useState(false);
+  const [pdfDaybookEnabled, setPdfDaybookEnabled] = useState(false);
   const [pdfShortName, setPdfShortName] = useState('');
   const [pdfFooter, setPdfFooter] = useState('');
 
@@ -144,6 +147,8 @@ export function SADashboardScreen() {
         rate_mode: baard.rate_mode ?? 'PER_KG',
       });
       setPdfEnabled(pdf?.pdf_enabled ?? false);
+      setPdfBuyerSummaryEnabled(pdf?.buyer_summary_pdf_enabled ?? false);
+      setPdfDaybookEnabled(pdf?.daybook_pdf_enabled ?? false);
       setPdfShortName(pdf?.firm_short_name ?? '');
       setPdfFooter(pdf?.footer_text ?? '');
     } catch { setConfigForm(EMPTY_CONFIG); }
@@ -298,6 +303,8 @@ export function SADashboardScreen() {
         }, saToken),
         superAdminApi.setPdfConfig(selectedFirm.id, {
           pdf_enabled: pdfEnabled,
+          buyer_summary_pdf_enabled: pdfBuyerSummaryEnabled,
+          daybook_pdf_enabled: pdfDaybookEnabled,
           firm_short_name: pdfShortName.trim() || null,
           footer_text: pdfFooter.trim() || null,
         }, saToken),
@@ -491,157 +498,201 @@ export function SADashboardScreen() {
               </View>
               <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}><Text style={styles.sheetCloseText}>✕</Text></TouchableOpacity>
             </View>
-            {loadingConfig ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (
+            {loadingConfig ? <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} /> : (<>
+              {/* ── Tab bar ── */}
+              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#f8fafc' }}>
+                {(['rates', 'baardana', 'pdf'] as const).map(tab => {
+                  const labels = { rates: '📊 Rates', baardana: '🛄 Baardana', pdf: '📄 PDF' };
+                  const active = configTab === tab;
+                  return (
+                    <TouchableOpacity key={tab} onPress={() => setConfigTab(tab)}
+                      style={{ flex: 1, paddingVertical: spacing[3], alignItems: 'center', borderBottomWidth: 2, borderBottomColor: active ? '#7c3aed' : 'transparent' }}>
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#7c3aed' : '#64748b' }}>{labels[tab]}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <ScrollView contentContainerStyle={styles.formScroll}>
-                {/* ── APMC Fee ── */}
-                <View style={styles.configSection}>
-                  <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>{'🏛️'}</Text>
-                    <View>
-                      <Text style={styles.configSectionTitle}>{'APMC Fee'}</Text>
-                      <Text style={styles.configHint}>{'Applied to every authorized KC'}</Text>
+                {/* ── TAB: Rates ── */}
+                {configTab === 'rates' && <>
+                  {/* APMC Fee */}
+                  <View style={styles.configSection}>
+                    <View style={styles.configSectionHeader}>
+                      <Text style={styles.configSectionIcon}>{'🏛️'}</Text>
+                      <View>
+                        <Text style={styles.configSectionTitle}>{'APMC Fee'}</Text>
+                        <Text style={styles.configHint}>{'Applied to every authorized KC'}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Fee Type'}</Text>
+                    <View style={styles.chipRow}>
+                      {FEE_TYPES.map(t => {
+                        const feeActive = configForm.fee_type === t;
+                        const feeLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
+                        return (
+                          <TouchableOpacity key={t} style={feeActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('fee_type')(t)}>
+                            <Text style={feeActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{feeLabel}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <ConfigField
+                      label={configForm.fee_type === 'PERCENTAGE' ? 'Fee Rate (%)' : configForm.fee_type === 'FIXED_PER_KG' ? 'Fee per kg (₹)' : 'Fee per transaction (₹)'}
+                      value={configForm.fee_value}
+                      onChangeText={setConfigField('fee_value')}
+                      placeholder="e.g. 0.5"
+                    />
+                    <View style={styles.configRow}>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Min Fee (₹)" value={configForm.min_fee} onChangeText={setConfigField('min_fee')} placeholder="optional" />
+                      </View>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Max Fee (₹)" value={configForm.max_fee} onChangeText={setConfigField('max_fee')} placeholder="optional" />
+                      </View>
                     </View>
                   </View>
-                  <Text style={styles.fieldLabel}>{'Fee Type'}</Text>
-                  <View style={styles.chipRow}>
-                    {FEE_TYPES.map(t => {
-                      const feeActive = configForm.fee_type === t;
-                      const feeLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
-                      return (
-                        <TouchableOpacity key={t} style={feeActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('fee_type')(t)}>
-                          <Text style={feeActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{feeLabel}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <ConfigField
-                    label={configForm.fee_type === 'PERCENTAGE' ? 'Fee Rate (%)' : configForm.fee_type === 'FIXED_PER_KG' ? 'Fee per kg (₹)' : 'Fee per transaction (₹)'}
-                    value={configForm.fee_value}
-                    onChangeText={setConfigField('fee_value')}
-                    placeholder="e.g. 0.5"
-                  />
-                  <View style={styles.configRow}>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Min Fee (₹)" value={configForm.min_fee} onChangeText={setConfigField('min_fee')} placeholder="optional" />
-                    </View>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Max Fee (₹)" value={configForm.max_fee} onChangeText={setConfigField('max_fee')} placeholder="optional" />
-                    </View>
-                  </View>
-                </View>
 
-                {/* ── Commission ── */}
-                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
-                  <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>{'💰'}</Text>
-                    <View>
-                      <Text style={styles.configSectionTitle}>{'Commission'}</Text>
-                      <Text style={styles.configHint}>{'Firm commission earned per KC'}</Text>
+                  {/* Commission */}
+                  <View style={[styles.configSection, { marginTop: spacing[4] }]}>
+                    <View style={styles.configSectionHeader}>
+                      <Text style={styles.configSectionIcon}>{'💰'}</Text>
+                      <View>
+                        <Text style={styles.configSectionTitle}>{'Commission'}</Text>
+                        <Text style={styles.configHint}>{'Firm commission earned per KC'}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Commission Type'}</Text>
+                    <View style={styles.chipRow}>
+                      {FEE_TYPES.map(t => {
+                        const commActive = configForm.commission_type === t;
+                        const commLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
+                        return (
+                          <TouchableOpacity key={t} style={commActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('commission_type')(t)}>
+                            <Text style={commActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{commLabel}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <ConfigField
+                      label={configForm.commission_type === 'PERCENTAGE' ? 'Commission Rate (%)' : configForm.commission_type === 'FIXED_PER_KG' ? 'Commission per kg (₹)' : 'Commission per transaction (₹)'}
+                      value={configForm.commission_value}
+                      onChangeText={setConfigField('commission_value')}
+                      placeholder="e.g. 2.0"
+                    />
+                    <View style={styles.configRow}>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Min (₹)" value={configForm.min_commission} onChangeText={setConfigField('min_commission')} placeholder="optional" />
+                      </View>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Max (₹)" value={configForm.max_commission} onChangeText={setConfigField('max_commission')} placeholder="optional" />
+                      </View>
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Rounding Strategy'}</Text>
+                    <View style={styles.chipRow}>
+                      {ROUNDING_OPTS.map(r => {
+                        const rndActive = configForm.rounding_strategy === r;
+                        return (
+                          <TouchableOpacity key={r} style={rndActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('rounding_strategy')(r)}>
+                            <Text style={rndActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{r.replace(/_/g, ' ')}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   </View>
-                  <Text style={styles.fieldLabel}>{'Commission Type'}</Text>
-                  <View style={styles.chipRow}>
-                    {FEE_TYPES.map(t => {
-                      const commActive = configForm.commission_type === t;
-                      const commLabel = t === 'PERCENTAGE' ? '% Rate' : t === 'FIXED_PER_KG' ? '₹/kg' : '₹/txn';
-                      return (
-                        <TouchableOpacity key={t} style={commActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('commission_type')(t)}>
-                          <Text style={commActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{commLabel}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <ConfigField
-                    label={configForm.commission_type === 'PERCENTAGE' ? 'Commission Rate (%)' : configForm.commission_type === 'FIXED_PER_KG' ? 'Commission per kg (₹)' : 'Commission per transaction (₹)'}
-                    value={configForm.commission_value}
-                    onChangeText={setConfigField('commission_value')}
-                    placeholder="e.g. 2.0"
-                  />
-                  <View style={styles.configRow}>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Min (₹)" value={configForm.min_commission} onChangeText={setConfigField('min_commission')} placeholder="optional" />
-                    </View>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Max (₹)" value={configForm.max_commission} onChangeText={setConfigField('max_commission')} placeholder="optional" />
-                    </View>
-                  </View>
-                  <Text style={styles.fieldLabel}>{'Rounding Strategy'}</Text>
-                  <View style={styles.chipRow}>
-                    {ROUNDING_OPTS.map(r => {
-                      const rndActive = configForm.rounding_strategy === r;
-                      return (
-                        <TouchableOpacity key={r} style={rndActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigField('rounding_strategy')(r)}>
-                          <Text style={rndActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{r.replace(/_/g, ' ')}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
+                </>}
 
-                {/* ── Baardana (Bags) ── */}
-                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
-                  <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>{'🛄'}</Text>
-                    <View>
-                      <Text style={styles.configSectionTitle}>{'Baardana (Bags)'}</Text>
-                      <Text style={styles.configHint}>{'Default bag source & count per KC line item'}</Text>
+                {/* ── TAB: Baardana ── */}
+                {configTab === 'baardana' && (
+                  <View style={styles.configSection}>
+                    <View style={styles.configSectionHeader}>
+                      <Text style={styles.configSectionIcon}>{'🛄'}</Text>
+                      <View>
+                        <Text style={styles.configSectionTitle}>{'Baardana (Bags)'}</Text>
+                        <Text style={styles.configHint}>{'Default bag source & count per KC line item'}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Bag Provider'}</Text>
+                    <View style={styles.chipRow}>
+                      {(['FIRM', 'CUSTOMER'] as const).map(p => {
+                        const provActive = configForm.baardana_provider === p;
+                        return (
+                          <TouchableOpacity key={p} style={provActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, baardana_provider: p }))}>
+                            <Text style={provActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{p === 'FIRM' ? '🏪 Firm' : '👤 Customer'}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Rate Mode'}</Text>
+                    <View style={styles.chipRow}>
+                      {(['PER_KG', 'PER_NAG'] as const).map(m => {
+                        const rateActive = configForm.rate_mode === m;
+                        return (
+                          <TouchableOpacity key={m} style={rateActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, rate_mode: m }))}>
+                            <Text style={rateActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{m === 'PER_KG' ? '⚖️ Rate per KG' : '🎒 Rate per Nag'}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.configRow}>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Default Bags" value={configForm.default_bags} onChangeText={v => setConfigForm(p => ({ ...p, default_bags: v }))} placeholder="e.g. 1" keyboardType="numeric" />
+                      </View>
+                      <View style={styles.configHalf}>
+                        <ConfigField label="Cost per Bag (₹)" value={configForm.baardana_cost_per_unit} onChangeText={setConfigField('baardana_cost_per_unit')} placeholder="e.g. 5.00" keyboardType="decimal-pad" />
+                      </View>
                     </View>
                   </View>
-                  <Text style={styles.fieldLabel}>{'Bag Provider'}</Text>
-                  <View style={styles.chipRow}>
-                    {(['FIRM', 'CUSTOMER'] as const).map(p => {
-                      const provActive = configForm.baardana_provider === p;
-                      return (
-                        <TouchableOpacity key={p} style={provActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, baardana_provider: p }))}>
-                          <Text style={provActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{p === 'FIRM' ? '🏪 Firm' : '👤 Customer'}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <Text style={styles.fieldLabel}>{'Rate Mode'}</Text>
-                  <View style={styles.chipRow}>
-                    {(['PER_KG', 'PER_NAG'] as const).map(m => {
-                      const rateActive = configForm.rate_mode === m;
-                      return (
-                        <TouchableOpacity key={m} style={rateActive ? [styles.chip, styles.chipActive] : styles.chip} onPress={() => setConfigForm(prev => ({ ...prev, rate_mode: m }))}>
-                          <Text style={rateActive ? [styles.chipText, styles.chipTextActive] : styles.chipText}>{m === 'PER_KG' ? '⚖️ Rate per KG' : '🎒 Rate per Nag'}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <View style={styles.configRow}>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Default Bags" value={configForm.default_bags} onChangeText={v => setConfigForm(p => ({ ...p, default_bags: v }))} placeholder="e.g. 1" keyboardType="numeric" />
-                    </View>
-                    <View style={styles.configHalf}>
-                      <ConfigField label="Cost per Bag (₹)" value={configForm.baardana_cost_per_unit} onChangeText={setConfigField('baardana_cost_per_unit')} placeholder="e.g. 5.00" keyboardType="decimal-pad" />
-                    </View>
-                  </View>
-                </View>
+                )}
 
-                {/* ── PDF Receipt ── */}
-                <View style={[styles.configSection, { marginTop: spacing[4] }]}>
-                  <View style={styles.configSectionHeader}>
-                    <Text style={styles.configSectionIcon}>{'📄'}</Text>
-                    <View>
-                      <Text style={styles.configSectionTitle}>{'PDF Receipt'}</Text>
-                      <Text style={styles.configHint}>{'Allow firm to download KC receipts as PDF'}</Text>
+                {/* ── TAB: PDF Downloads ── */}
+                {configTab === 'pdf' && (
+                  <View style={styles.configSection}>
+                    <View style={styles.configSectionHeader}>
+                      <Text style={styles.configSectionIcon}>{'📄'}</Text>
+                      <View>
+                        <Text style={styles.configSectionTitle}>{'PDF Downloads'}</Text>
+                        <Text style={styles.configHint}>{'Enable PDF generation per report type'}</Text>
+                      </View>
+                    </View>
+
+                    {/* KC Receipt PDF */}
+                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 10, padding: spacing[3], marginBottom: spacing[3] }}>
+                      <Text style={[styles.configSectionTitle, { fontSize: 13, marginBottom: spacing[2] }]}>{'🧾 KC Receipt'}</Text>
+                      <Text style={styles.configHint}>{'Download PDF receipt for each authorized KC'}</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing[3] }}>
+                        <Text style={styles.fieldLabel}>{'Enable KC Receipt PDF'}</Text>
+                        <Switch value={pdfEnabled} onValueChange={setPdfEnabled} trackColor={{ true: '#7c3aed' }} />
+                      </View>
+                      {pdfEnabled && (<>
+                        <ConfigField label="Firm Short Name (shown at top)" value={pdfShortName} onChangeText={setPdfShortName} placeholder="e.g. NP" />
+                        <ConfigField label="Footer Text" value={pdfFooter} onChangeText={setPdfFooter} placeholder="RATES INCLUSIVE OF ALL TAXES" />
+                      </>)}
+                    </View>
+
+                    {/* Buyer Summary PDF */}
+                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 10, padding: spacing[3], marginBottom: spacing[3] }}>
+                      <Text style={[styles.configSectionTitle, { fontSize: 13, marginBottom: spacing[2] }]}>{'📊 Buyer Summary (Date-wise)'}</Text>
+                      <Text style={styles.configHint}>{'Download all buyers summary for a date — shows PURCHA, NAME, bags, weight, gross, APMC, bardana, net'}</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing[3] }}>
+                        <Text style={styles.fieldLabel}>{'Enable Buyer Summary PDF'}</Text>
+                        <Switch value={pdfBuyerSummaryEnabled} onValueChange={setPdfBuyerSummaryEnabled} trackColor={{ true: '#7c3aed' }} />
+                      </View>
+                    </View>
+
+                    {/* Day Book PDF */}
+                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 10, padding: spacing[3] }}>
+                      <Text style={[styles.configSectionTitle, { fontSize: 13, marginBottom: spacing[2] }]}>{'📚 Day Book (Truck-wise)'}</Text>
+                      <Text style={styles.configHint}>{'Arrival Day-Book — truck summary + per-KC detail with freight, cartage, commission, APMC, bardana'}</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing[3] }}>
+                        <Text style={styles.fieldLabel}>{'Enable Day Book PDF'}</Text>
+                        <Switch value={pdfDaybookEnabled} onValueChange={setPdfDaybookEnabled} trackColor={{ true: '#0f766e' }} />
+                      </View>
                     </View>
                   </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[3] }}>
-                    <Text style={styles.fieldLabel}>{'Enable PDF Download'}</Text>
-                    <Switch value={pdfEnabled} onValueChange={setPdfEnabled} />
-                  </View>
-                  {pdfEnabled && (
-                    <>
-                      <ConfigField label="Firm Short Name (e.g. NP)" value={pdfShortName} onChangeText={setPdfShortName} placeholder="e.g. NP" />
-                      <ConfigField label="Footer Text" value={pdfFooter} onChangeText={setPdfFooter} placeholder="RATES INCLUSIVE OF ALL TAXES" />
-                    </>
-                  )}
-                </View>
-
+                )}
               </ScrollView>
-            )}
+            </>)}
             <View style={styles.saveBar}>
               <TouchableOpacity
                 style={styles.primaryBtn}

@@ -28,9 +28,14 @@ export const kcsApi = {
   addPayment: (id: string, data: object) => api.post(`/kcs/${id}/payments`, data),
   authorize: (id: string, data: object) => api.post(`/kcs/${id}/authorize`, data),
   cancel: (id: string, data: object) => api.post(`/kcs/${id}/cancel`, data),
-  /** Returns URL that can be opened with Linking.openURL — token passed as query param */
+  /** Returns URL for Linking.openURL — KC receipt PDF */
   getPdfUrl: (id: string, accessToken: string): string =>
     `${API_BASE_URL}/kcs/${id}/pdf?token=${encodeURIComponent(accessToken)}`,
+  /** Returns URL for Linking.openURL — buyer summary PDF for a date */
+  getBuyerSummaryPdfUrl: (dateFrom: string, dateTo: string, accessToken: string): string =>
+    `${API_BASE_URL}/reports/buyer-summary/pdf?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&token=${encodeURIComponent(accessToken)}`,
+  getDaybookPdfUrl: (dateFrom: string, dateTo: string, accessToken: string): string =>
+    `${API_BASE_URL}/reports/daybook/pdf?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&token=${encodeURIComponent(accessToken)}`,
 };
 
 // ─── Customers ───────────────────────────────────────────────────────────────

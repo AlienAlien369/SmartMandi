@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, Share, ActivityIndicator,
+  Alert, Share, ActivityIndicator, Linking,
 } from 'react-native';
+import { useSelector } from 'react-redux';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { dashboardApi, reportsApi } from '../../api/endpoints';
+import type { RootState } from '../../store';
+import { dashboardApi, reportsApi, kcsApi } from '../../api/endpoints';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 
@@ -43,9 +45,12 @@ function rangeLabel(preset: Preset, range: { date_from: string; date_to: string 
 // ─── Screen ─────────────────────────────────────────────────────────
 export function ReportsScreen() {
   const queryClient = useQueryClient();
+  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
   const [preset, setPreset] = useState<Preset>('today');
   const [exportingKcs, setExportingKcs] = useState(false);
   const [exportingTrucks, setExportingTrucks] = useState(false);
+  const [downloadingBuyerPdf, setDownloadingBuyerPdf] = useState(false);
+  const [downloadingDaybookPdf, setDownloadingDaybookPdf] = useState(false);
 
   const range = useMemo(() => getRange(preset), [preset]);
 
@@ -114,6 +119,34 @@ export function ReportsScreen() {
 
   const sheetList: any[] = sheets?.data ?? sheets ?? [];
 
+  // ── Download Buyer Summary PDF ──
+  const handleBuyerSummaryPdf = async () => {
+    if (!accessToken) { Alert.alert('Error', 'Not logged in'); return; }
+    try {
+      setDownloadingBuyerPdf(true);
+      const url = kcsApi.getBuyerSummaryPdfUrl(range.date_from, range.date_to, accessToken);
+      await Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not open PDF');
+    } finally {
+      setDownloadingBuyerPdf(false);
+    }
+  };
+
+  // ── Download Day Book PDF ──
+  const handleDaybookPdf = async () => {
+    if (!accessToken) { Alert.alert('Error', 'Not logged in'); return; }
+    try {
+      setDownloadingDaybookPdf(true);
+      const url = kcsApi.getDaybookPdfUrl(range.date_from, range.date_to, accessToken);
+      await Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not open PDF');
+    } finally {
+      setDownloadingDaybookPdf(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
@@ -158,6 +191,29 @@ export function ReportsScreen() {
           loading={exportingTrucks}
           onPress={handleExportTrucks}
           color={colors.info}
+        />
+      </View>
+
+      {/* ── PDF Downloads ── */}
+      <SectionTitle title="PDF Downloads" />
+      <View style={styles.card}>
+        <Text style={styles.cardSubtitle}>Download formatted PDF reports (must be enabled by Super Admin)</Text>
+        <ActionRow
+          icon="📊"
+          label="Buyer Summary PDF"
+          sublabel={`${rangeLabel(preset, range)}`}
+          loading={downloadingBuyerPdf}
+          onPress={handleBuyerSummaryPdf}
+          color="#7c3aed"
+        />
+        <View style={styles.rowDivider} />
+        <ActionRow
+          icon="📚"
+          label="Day Book PDF (Truck-wise)"
+          sublabel={`${rangeLabel(preset, range)}`}
+          loading={downloadingDaybookPdf}
+          onPress={handleDaybookPdf}
+          color="#0f766e"
         />
       </View>
 

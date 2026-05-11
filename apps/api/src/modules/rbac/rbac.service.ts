@@ -314,31 +314,35 @@ export class RbacService {
 
   async getFirmPdfConfig(firmId: string): Promise<{
     pdf_enabled: boolean;
+    buyer_summary_pdf_enabled: boolean;
+    daybook_pdf_enabled: boolean;
     pdf_format: string;
     firm_short_name: string | null;
     footer_text: string | null;
   }> {
     const [row] = await this.dataSource.query(
-      `SELECT pdf_enabled, pdf_format, firm_short_name, footer_text
+      `SELECT pdf_enabled, buyer_summary_pdf_enabled, daybook_pdf_enabled, pdf_format, firm_short_name, footer_text
        FROM firm_pdf_config WHERE firm_id = $1`,
       [firmId],
     );
-    return row ?? { pdf_enabled: false, pdf_format: 'STANDARD', firm_short_name: null, footer_text: null };
+    return row ?? { pdf_enabled: false, buyer_summary_pdf_enabled: false, daybook_pdf_enabled: false, pdf_format: 'STANDARD', firm_short_name: null, footer_text: null };
   }
 
   async setFirmPdfConfig(
     firmId: string,
-    data: { pdf_enabled: boolean; firm_short_name?: string; footer_text?: string },
-  ): Promise<{ pdf_enabled: boolean; pdf_format: string; firm_short_name: string | null; footer_text: string | null }> {
+    data: { pdf_enabled: boolean; buyer_summary_pdf_enabled?: boolean; daybook_pdf_enabled?: boolean; firm_short_name?: string; footer_text?: string },
+  ): Promise<{ pdf_enabled: boolean; buyer_summary_pdf_enabled: boolean; daybook_pdf_enabled: boolean; pdf_format: string; firm_short_name: string | null; footer_text: string | null }> {
     await this.dataSource.query(
-      `INSERT INTO firm_pdf_config (firm_id, pdf_enabled, firm_short_name, footer_text, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+      `INSERT INTO firm_pdf_config (firm_id, pdf_enabled, buyer_summary_pdf_enabled, daybook_pdf_enabled, firm_short_name, footer_text, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT (firm_id) DO UPDATE
-         SET pdf_enabled    = EXCLUDED.pdf_enabled,
-             firm_short_name = EXCLUDED.firm_short_name,
-             footer_text    = EXCLUDED.footer_text,
-             updated_at     = NOW()`,
-      [firmId, data.pdf_enabled, data.firm_short_name ?? null, data.footer_text ?? null],
+         SET pdf_enabled                = EXCLUDED.pdf_enabled,
+             buyer_summary_pdf_enabled  = EXCLUDED.buyer_summary_pdf_enabled,
+             daybook_pdf_enabled        = EXCLUDED.daybook_pdf_enabled,
+             firm_short_name            = EXCLUDED.firm_short_name,
+             footer_text                = EXCLUDED.footer_text,
+             updated_at                 = NOW()`,
+      [firmId, data.pdf_enabled, data.buyer_summary_pdf_enabled ?? false, data.daybook_pdf_enabled ?? false, data.firm_short_name ?? null, data.footer_text ?? null],
     );
     return this.getFirmPdfConfig(firmId);
   }

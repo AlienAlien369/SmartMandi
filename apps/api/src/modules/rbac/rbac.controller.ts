@@ -396,6 +396,8 @@ export class SuperAdminController {
     @Query('admin_token') adminToken: string,
     @Body() body: {
       pdf_enabled: boolean;
+      buyer_summary_pdf_enabled?: boolean;
+      daybook_pdf_enabled?: boolean;
       firm_short_name?: string;
       footer_text?: string;
     },

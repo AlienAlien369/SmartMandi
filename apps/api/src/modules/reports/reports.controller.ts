@@ -1,11 +1,17 @@
 import {
   Controller, Get, Query, Res, UseGuards,
+  Headers, UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
 import { ReportsService } from './reports.service';
+import { BuyerSummaryPdfService } from './buyer-summary-pdf.service';
+import { DaybookPdfService } from './daybook-pdf.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentFirmId } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { JwtPayload } from '../auth/jwt.strategy';
 import { LedgerType } from '../../common/enums';
 
 @ApiTags('reports')
@@ -13,7 +19,12 @@ import { LedgerType } from '../../common/enums';
 @UseGuards(JwtAuthGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly service: ReportsService) {}
+  constructor(
+    private readonly service: ReportsService,
+    private readonly buyerSummaryPdfService: BuyerSummaryPdfService,
+    private readonly daybookPdfService: DaybookPdfService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   @Get('ledger')
   @ApiOperation({ summary: 'Ledger view by type (CUSTOMER, TRUCK, FIRM_CASH, USER_SALARY)' })
@@ -84,5 +95,78 @@ export class ReportsController {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="trucks-${label}.csv"`);
     res.send(csv);
+  }
+
+  /** Buyer Summary PDF — Public endpoint, JWT via ?token= or Authorization header */
+  @Public()
+  @Get('buyer-summary/pdf')
+  @ApiOperation({ summary: 'Download buyer summary PDF for a date range (PDF must be enabled by SA)' })
+  @ApiQuery({ name: 'date_from', required: true, description: 'Start date YYYY-MM-DD' })
+  @ApiQuery({ name: 'date_to', required: true, description: 'End date YYYY-MM-DD' })
+  @ApiQuery({ name: 'token', required: false, description: 'JWT access token (alternative to Authorization header)' })
+  async buyerSummaryPdf(
+    @Query('date_from') dateFrom: string,
+    @Query('date_to') dateTo: string,
+    @Query('token') tokenQuery: string,
+    @Headers('authorization') authHeader: string,
+    @Res() res: Response,
+  ) {
+    // Manual JWT verification (needed for Linking.openURL which can't set headers)
+    const rawToken = tokenQuery || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
+    if (!rawToken) throw new UnauthorizedException('Token required');
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(rawToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    if (!dateFrom || !dateTo) throw new UnauthorizedException('date_from and date_to params are required');
+
+    const firmId = payload.firm_id;
+    const buf = await this.buyerSummaryPdfService.generateBuyerSummaryPdf(firmId, dateFrom, dateTo);
+    const isSingleDay = dateFrom === dateTo;
+    const label = isSingleDay
+      ? dateFrom.replace(/-/g, '')
+      : `${dateFrom.replace(/-/g, '')}-${dateTo.replace(/-/g, '')}`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="buyer-summary-${label}.pdf"`);
+    res.setHeader('Content-Length', buf.length);
+    res.end(buf);
+  }
+
+  /** Day Book PDF — Public endpoint, JWT via ?token= or Authorization header */
+  @Public()
+  @Get('daybook/pdf')
+  @ApiOperation({ summary: 'Download truck-wise day book PDF for a date range (must be enabled by SA)' })
+  @ApiQuery({ name: 'date_from', required: true, description: 'Start date YYYY-MM-DD' })
+  @ApiQuery({ name: 'date_to',   required: true, description: 'End date YYYY-MM-DD' })
+  @ApiQuery({ name: 'token',     required: false, description: 'JWT access token' })
+  async daybookPdf(
+    @Query('date_from') dateFrom: string,
+    @Query('date_to')   dateTo: string,
+    @Query('token')     tokenQuery: string,
+    @Headers('authorization') authHeader: string,
+    @Res() res: Response,
+  ) {
+    const rawToken = tokenQuery || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
+    if (!rawToken) throw new UnauthorizedException('Token required');
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(rawToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    if (!dateFrom || !dateTo) throw new UnauthorizedException('date_from and date_to params are required');
+
+    const firmId = payload.firm_id;
+    const buf = await this.daybookPdfService.generateDaybookPdf(firmId, dateFrom, dateTo);
+    const isSingleDay = dateFrom === dateTo;
+    const label = isSingleDay
+      ? dateFrom.replace(/-/g, '')
+      : `${dateFrom.replace(/-/g, '')}-${dateTo.replace(/-/g, '')}`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="daybook-${label}.pdf"`);
+    res.setHeader('Content-Length', buf.length);
+    res.end(buf);
   }
 }

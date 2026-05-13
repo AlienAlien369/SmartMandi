@@ -88,6 +88,10 @@ SF/
 ├── packages/
 │   └── shared/                     # Shared TypeScript types
 ├── docs/                           # HLD, LLD, features.md, agents.md, prompts.md
+├── graphify-out/                   # Knowledge graph artifacts (read before architectural decisions)
+│   ├── graph.html                  # Interactive 663-node graph (open in browser)
+│   ├── graph.json                  # GraphRAG-ready JSON for programmatic queries
+│   └── GRAPH_REPORT.md             # Pre-computed: god nodes, community labels, surprising edges
 ├── scripts/                        # Dev automation scripts
 └── .github/
     ├── copilot-instructions.md     # This file — Copilot system prompt
@@ -97,7 +101,29 @@ SF/
 
 ---
 
-## Coding Standards
+## Knowledge Graph Reference (ALWAYS consult before changes)
+
+**Before making any architectural change, adding a new module, or modifying a high-coupling component, read `graphify-out/GRAPH_REPORT.md` first.**
+
+### Why
+The knowledge graph maps every dependency edge in the codebase. Ignoring it risks breaking high-fan-out nodes that are non-obvious from reading a single file.
+
+### God Nodes (highest breaking-change risk — extra caution required)
+| Node | Edges | Risk |
+|------|-------|------|
+| `SuperAdminController` | 24 | SA CRUD + module + permission + config endpoints |
+| `ConfiguratorService` | 22 | commission/APMC/baardana/grade config resolution |
+| `RbacService` | 18 | module access + role permissions |
+| `DashboardService` | 14 | metrics precomputation |
+| `KacchaChitthaService` | 12 | 9-step KC authorization engine |
+
+### How to use
+- **Before modifying a god node** → open `graphify-out/graph.html` and inspect all edges
+- **Before adding a new service/module** → search `graphify-out/graph.json` for existing nodes with the same responsibility to avoid duplication
+- **For impact analysis** → `graphify-out/GRAPH_REPORT.md` lists every community cluster and surprising connections
+
+### Key community clusters (from graph)
+`RBAC & Permissions` · `Config & Users` · `Events & Trucks` · `Fee Calculation Engine` · `Mobile RBAC Screens` · `Reports & Ledger Screen` · `Dashboard Service` · `Offline Queue & Sync` · `Super Admin Dashboard` · `Auth Module` · `Ledger Service` · `KC Controller & Payments` · `Push Notifications` · `Salary & Freight Screen`
 
 ### TypeScript
 - Strict mode enabled (`"strict": true`)

@@ -1,18 +1,23 @@
 /**
  * Single source of truth for the API base URL.
  *
- * DEV SETUP (choose one):
- *   Option A — WiFi (recommended, no ADB setup needed):
- *     Uncomment your machine's local IP below. App talks to your PC over WiFi.
- *     Find your IP: ipconfig (Windows) | ifconfig (Mac/Linux)
+ * ─── DEV SETUP ────────────────────────────────────────────────────────────────
+ * 1. Copy apps/mobile/.env.example → apps/mobile/.env
+ * 2. Set API_BASE_URL_DEV to your machine's LAN IP
+ *    Find it: ipconfig (Windows) | ifconfig (Mac/Linux)
+ * 3. Update the URL below to match your .env:
+ *
+ *   Option A — WiFi (recommended):
+ *     'http://192.168.x.x:3000/api/v1'   ← your machine's local IP
  *
  *   Option B — USB ADB reverse:
- *     Run: npm run adb:setup
- *     Then uncomment the localhost line.
- *     Must re-run after every cable reconnect.
+ *     'http://localhost:3000/api/v1'
+ *     Run first: npm run adb:setup  (re-run after every cable reconnect)
+ *
+ * ─── PROD SETUP ───────────────────────────────────────────────────────────────
+ * Set API_BASE_URL_PROD in apps/mobile/.env to your server IP/domain.
+ * ⚠️  Never hardcode a production IP directly here — use the .env file.
  */
 export const API_BASE_URL = __DEV__
-  ? 'http://192.168.1.36:3000/api/v1'  // ← home WiFi (change IP if your network changes)
-  // ? 'http://10.10.7.32:3000/api/v1' // ← office WiFi
-  // ? 'http://localhost:3000/api/v1'   // ← USB only (needs: npm run adb:setup)
-  : 'https://api.smartmandi.app/api/v1';
+  ? 'http://192.168.1.36:3000/api/v1'       // ← update to match your .env API_BASE_URL_DEV
+  : 'http://13.205.154.123:3000/api/v1';    // ← update to match your .env API_BASE_URL_PROD

@@ -12,6 +12,8 @@ import type { CustomerStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { usePermissions } from '../../hooks/usePermissions';
 import { extractApiError } from '../../utils/errorUtils';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -32,6 +34,7 @@ export function CustomerDetailScreen() {
   const navigation = useNavigation<NavT>();
   const queryClient = useQueryClient();
   const perms = usePermissions('CUSTOMERS');
+  const { isOnline } = useNetworkState();
   const [expandedKc, setExpandedKc] = useState<string | null>(null);
 
   const { data: history, isLoading, error } = useQuery<History>({
@@ -43,8 +46,19 @@ export function CustomerDetailScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => customersApi.delete(params.customerId),
-    onSuccess: () => {
+    mutationFn: async () => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('DELETE', `/customers/${params.customerId}`, null);
+        return null;
+      }
+      return customersApi.delete(params.customerId);
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        Alert.alert('Queued 📶', 'Customer deletion will be processed when you reconnect.');
+        navigation.goBack();
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       navigation.goBack();
     },

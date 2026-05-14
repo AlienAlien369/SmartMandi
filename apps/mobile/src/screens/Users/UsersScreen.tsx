@@ -9,6 +9,8 @@ import { colors, typography, spacing, radius, shadow } from '../../theme';
 import type { User, UserRole } from '../../types';
 import { extractApiError } from '../../utils/errorUtils';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 const ROLES: UserRole[] = ['FIRM_HEAD', 'AUTHORIZER', 'OPERATOR', 'VIEWER'];
 
@@ -22,6 +24,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
 export function UsersScreen() {
   const queryClient = useQueryClient();
   const perms = usePermissions('USERS');
+  const { isOnline } = useNetworkState();
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [name, setName] = useState('');
@@ -53,8 +56,19 @@ export function UsersScreen() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => usersApi.create({ name, phone, role }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', '/users', { name, phone, role });
+        return null;
+      }
+      return usersApi.create({ name, phone, role });
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        setShowModal(false);
+        Alert.alert('Saved Offline 📶', 'User will be created when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowModal(false);
       Alert.alert('Success', 'User created');
@@ -63,8 +77,19 @@ export function UsersScreen() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => usersApi.update(editingUser!.id, { name, role }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('PATCH', `/users/${editingUser!.id}`, { name, role });
+        return null;
+      }
+      return usersApi.update(editingUser!.id, { name, role });
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        setShowModal(false);
+        Alert.alert('Saved Offline 📶', 'User will be updated when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowModal(false);
       Alert.alert('Success', 'User updated');
@@ -73,8 +98,18 @@ export function UsersScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => usersApi.delete(id),
-    onSuccess: () => {
+    mutationFn: async (id: string) => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('DELETE', `/users/${id}`, null);
+        return null;
+      }
+      return usersApi.delete(id);
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        Alert.alert('Queued 📶', 'User will be removed when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['users'] });
       Alert.alert('Deleted', 'Team member removed');
     },

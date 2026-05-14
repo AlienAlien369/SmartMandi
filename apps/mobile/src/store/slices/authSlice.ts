@@ -67,18 +67,21 @@ export const loginSuperAdmin = createAsyncThunk(
 );
 
 export const restoreSession = createAsyncThunk('auth/restoreSession', async () => {
-  const [token, userStr, saToken, saAdminStr, moduleIdsStr] = await Promise.all([
+  const [token, userStr, saToken, saAdminStr, moduleIdsStr, permissionsStr] = await Promise.all([
     AsyncStorage.getItem('access_token'),
     AsyncStorage.getItem('user'),
     AsyncStorage.getItem('sa_token'),
     AsyncStorage.getItem('sa_admin'),
     AsyncStorage.getItem('accessible_module_ids'),
+    AsyncStorage.getItem('permissions'),
   ]);
   if (saToken && saAdminStr) {
     return { type: 'superadmin' as const, sa_token: saToken, admin: JSON.parse(saAdminStr) };
   }
   if (!token || !userStr) throw new Error('No session');
   let moduleIds: string[] = moduleIdsStr ? JSON.parse(moduleIdsStr) : ALL_MODULE_IDS;
+  let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> =
+    permissionsStr ? JSON.parse(permissionsStr) : {};
   try {
     const modsRes = await axios.get(`${API_BASE_URL}/rbac/my-modules`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -86,18 +89,18 @@ export const restoreSession = createAsyncThunk('auth/restoreSession', async () =
     moduleIds = (modsRes.data as Array<{ id: string }>).map(m => m.id);
     await AsyncStorage.setItem('accessible_module_ids', JSON.stringify(moduleIds));
   } catch {}
-  let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
   try {
     const permsRes = await axios.get(`${API_BASE_URL}/rbac/my-permissions`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     permissions = permsRes.data;
+    await AsyncStorage.setItem('permissions', JSON.stringify(permissions));
   } catch {}
   return { type: 'user' as const, access_token: token, user: JSON.parse(userStr) as User, accessibleModuleIds: moduleIds, permissions };
 });
 
 export const logout = createAsyncThunk('auth/logout', async () => {
-  await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'sa_token', 'sa_admin', 'accessible_module_ids']);
+  await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user', 'sa_token', 'sa_admin', 'accessible_module_ids', 'permissions']);
 });
 
 export const logoutSuperAdmin = createAsyncThunk('auth/logoutSuperAdmin', async () => {
@@ -124,8 +127,9 @@ const authSlice = createSlice({
         state.isSuperAdmin = false;
         state.accessibleModuleIds = action.payload.accessibleModuleIds;
         state.permissions = action.payload.permissions;
-        // Persist module IDs
+        // Persist module IDs and permissions for offline session restore
         AsyncStorage.setItem('accessible_module_ids', JSON.stringify(action.payload.accessibleModuleIds));
+        AsyncStorage.setItem('permissions', JSON.stringify(action.payload.permissions));
       })
       .addCase(login.rejected, state => { state.isLoading = false; })
       .addCase(loginSuperAdmin.pending, state => { state.isLoading = true; })

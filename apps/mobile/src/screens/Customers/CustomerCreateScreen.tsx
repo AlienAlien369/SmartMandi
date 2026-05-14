@@ -10,6 +10,8 @@ import { customersApi } from '../../api/endpoints';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 import type { CustomerStackParamList } from '../../types';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 type CreateRoute = RouteProp<CustomerStackParamList, 'CustomerCreate'>;
 type EditRoute   = RouteProp<CustomerStackParamList, 'CustomerEdit'>;
@@ -17,6 +19,7 @@ type EditRoute   = RouteProp<CustomerStackParamList, 'CustomerEdit'>;
 export function CustomerCreateScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const { isOnline } = useNetworkState();
 
   // Detect edit mode via route params (CustomerEdit route passes customerId + pre-fill)
   const route = useRoute<CreateRoute | EditRoute>();
@@ -30,15 +33,29 @@ export function CustomerCreateScreen() {
   });
 
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const payload: Record<string, any> = { name: form.name.trim() };
       if (form.phone.trim()) payload.phone = form.phone.trim();
       if (form.address.trim()) payload.address = form.address.trim();
+      if (!isOnline) {
+        const method = isEdit ? 'PATCH' : 'POST';
+        const endpoint = isEdit ? `/customers/${params.customerId}` : '/customers';
+        await offlineQueue.enqueue(method, endpoint, payload);
+        return null;
+      }
       return isEdit
         ? customersApi.update(params.customerId, payload)
         : customersApi.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (!data) {
+        Alert.alert(
+          'Saved Offline 📶',
+          `Customer will be ${isEdit ? 'updated' : 'created'} when you reconnect.`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }],
+        );
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customer-history', params?.customerId] });
       Alert.alert(

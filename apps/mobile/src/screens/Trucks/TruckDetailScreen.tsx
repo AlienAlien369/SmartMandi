@@ -11,6 +11,8 @@ import { trucksApi } from '../../api/endpoints';
 import type { Truck, TruckStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 type RouteT = RouteProp<TruckStackParamList, 'TruckDetail'>;
 type Nav = NativeStackNavigationProp<TruckStackParamList>;
@@ -19,6 +21,7 @@ export function TruckDetailScreen() {
   const { params } = useRoute<RouteT>();
   const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
+  const { isOnline } = useNetworkState();
 
   // Modal state for arrive action
   const [arriveModal, setArriveModal] = useState(false);
@@ -41,8 +44,21 @@ export function TruckDetailScreen() {
   });
 
   const arriveMutation = useMutation({
-    mutationFn: (weight: string) => trucksApi.arrive(params.truckId, { arrived_weight_kg: weight }),
-    onSuccess: () => {
+    mutationFn: async (weight: string) => {
+      const payload = { arrived_weight_kg: weight };
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', `/trucks/${params.truckId}/arrive`, payload);
+        return null;
+      }
+      return trucksApi.arrive(params.truckId, payload);
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        setArriveModal(false);
+        setGateWeight('');
+        Alert.alert('Saved Offline 📶', 'Truck arrival will be recorded when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['truck', params.truckId] });
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -54,9 +70,22 @@ export function TruckDetailScreen() {
   });
 
   const closeMutation = useMutation({
-    mutationFn: (payload: { actual_weight_kg: string; rate_per_kg: string; inam_amount?: string }) =>
-      trucksApi.close(params.truckId, payload),
-    onSuccess: () => {
+    mutationFn: async (payload: { actual_weight_kg: string; rate_per_kg: string; inam_amount?: string }) => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', `/trucks/${params.truckId}/close`, payload);
+        return null;
+      }
+      return trucksApi.close(params.truckId, payload);
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        setCloseModal(false);
+        setActualWeight('');
+        setRatePerKg('');
+        setInamAmount('');
+        Alert.alert('Saved Offline 📶', 'Truck closure will be recorded when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['truck', params.truckId] });
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });

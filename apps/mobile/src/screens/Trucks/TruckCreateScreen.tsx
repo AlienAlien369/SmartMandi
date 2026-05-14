@@ -11,12 +11,15 @@ import type { TruckStackParamList } from '../../types';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 import { Input, Button } from '../../components/ui';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 type Nav = NativeStackNavigationProp<TruckStackParamList>;
 
 export function TruckCreateScreen() {
   const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
+  const { isOnline } = useNetworkState();
 
   const [form, setForm] = useState({
     truck_number: '',
@@ -29,7 +32,7 @@ export function TruckCreateScreen() {
   });
 
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const payload: Record<string, any> = {
         truck_number: form.truck_number.trim(),
         driver_name: form.driver_name.trim(),
@@ -39,9 +42,17 @@ export function TruckCreateScreen() {
       if (form.driver_phone.trim()) payload.driver_phone = form.driver_phone.trim();
       if (form.estimated_weight_kg.trim()) payload.estimated_weight_kg = form.estimated_weight_kg.trim();
       if (form.notes.trim()) payload.notes = form.notes.trim();
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', '/trucks', payload);
+        return null;
+      }
       return trucksApi.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (!data) {
+        Alert.alert('Saved Offline 📶', 'Truck will be scheduled when you reconnect.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
       Alert.alert('Success', 'Truck scheduled!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     },

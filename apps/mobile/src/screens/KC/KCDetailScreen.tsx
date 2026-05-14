@@ -13,6 +13,8 @@ import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { RootState } from '../../store';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 type RouteT = RouteProp<KCStackParamList, 'KCDetail'>;
 
@@ -23,6 +25,7 @@ export function KCDetailScreen() {
   const queryClient = useQueryClient();
   const perms = usePermissions('KC');
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
+  const { isOnline } = useNetworkState();
 
   // Cancel modal state
   const [cancelModal, setCancelModal] = useState(false);
@@ -68,8 +71,18 @@ export function KCDetailScreen() {
   const firmRateMode = baardanaConfig?.rate_mode ?? 'PER_KG';
 
   const authorizeMutation = useMutation({
-    mutationFn: () => kcsApi.authorize(params.kcId, {}),
-    onSuccess: () => {
+    mutationFn: async () => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', `/kcs/${params.kcId}/authorize`, {});
+        return null;
+      }
+      return kcsApi.authorize(params.kcId, {});
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        Alert.alert('Queued 📶', 'Authorization will be submitted when you reconnect. Ledger entries will be written then.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['kc', params.kcId] });
       queryClient.invalidateQueries({ queryKey: ['kcs'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -79,8 +92,20 @@ export function KCDetailScreen() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (reason: string) => kcsApi.cancel(params.kcId, { reason }),
-    onSuccess: () => {
+    mutationFn: async (reason: string) => {
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', `/kcs/${params.kcId}/cancel`, { reason });
+        return null;
+      }
+      return kcsApi.cancel(params.kcId, { reason });
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        setCancelModal(false);
+        setCancelReason('');
+        Alert.alert('Queued 📶', 'Cancellation will be submitted when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['kc', params.kcId] });
       queryClient.invalidateQueries({ queryKey: ['kcs'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -92,7 +117,7 @@ export function KCDetailScreen() {
   });
 
   const saveEditMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const line_items = editItems.map((it, idx) => {
         if (it.rate_mode === 'PER_NAG') {
           return {
@@ -118,9 +143,18 @@ export function KCDetailScreen() {
           sort_order: idx,
         };
       });
+      if (!isOnline) {
+        await offlineQueue.enqueue('PATCH', `/kcs/${params.kcId}/items`, { line_items });
+        return null;
+      }
       return kcsApi.updateItems(params.kcId, { line_items });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (!data) {
+        setEditMode(false);
+        Alert.alert('Queued 📶', 'Item changes will be saved when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['kc', params.kcId] });
       setEditMode(false);
       Alert.alert('Saved', 'Line items updated');

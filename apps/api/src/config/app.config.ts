@@ -36,7 +36,7 @@ export const awsConfig = registerAs('aws', () => ({
 }));
 
 export const jwtConfig = registerAs('jwt', () => ({
-  secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production',
+  secret: process.env.JWT_SECRET ?? (() => { throw new Error('JWT_SECRET env var is required'); })(),
   accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '1h',
   refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
 }));

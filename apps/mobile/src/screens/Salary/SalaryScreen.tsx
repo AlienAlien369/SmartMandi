@@ -8,6 +8,8 @@ import { salaryApi, usersApi, trucksApi } from '../../api/endpoints';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
 
 // ─── Freight type config ────────────────────────────────────────────────────
 const FREIGHT_TYPES = [
@@ -32,6 +34,7 @@ function fmtDate(d: string) {
 export function SalaryScreen() {
   const queryClient = useQueryClient();
   const perms = usePermissions('SALARY');
+  const { isOnline } = useNetworkState();
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [filterType, setFilterType] = useState<FreightKey | 'ALL'>('ALL');
@@ -120,7 +123,7 @@ export function SalaryScreen() {
 
   // ── Mutations ────────────────────────────────────────────────────────
   const createMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!amount || isNaN(parseFloat(amount))) throw new Error('Please enter a valid amount');
       const basePayload = {
         amount,
@@ -128,15 +131,22 @@ export function SalaryScreen() {
         notes: [paymentMode, notes].filter(Boolean).join(' — ') || undefined,
         salary_date: salaryDate,
       };
-      if (isDriverType(freightType)) {
-        if (!selectedTruckId) throw new Error('Please select a truck / driver');
-        return salaryApi.create({ ...basePayload, truck_id: selectedTruckId });
-      } else {
-        if (!selectedUserId) throw new Error('Please select an employee');
-        return salaryApi.create({ ...basePayload, user_id: selectedUserId });
+      const fullPayload = isDriverType(freightType)
+        ? (() => { if (!selectedTruckId) throw new Error('Please select a truck / driver'); return { ...basePayload, truck_id: selectedTruckId }; })()
+        : (() => { if (!selectedUserId) throw new Error('Please select an employee'); return { ...basePayload, user_id: selectedUserId }; })();
+      if (!isOnline) {
+        await offlineQueue.enqueue('POST', '/salary', fullPayload);
+        return null;
       }
+      return salaryApi.create(fullPayload);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (!data) {
+        setShowModal(false);
+        resetForm();
+        Alert.alert('Saved Offline 📶', 'Freight entry will be recorded when you reconnect.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['freight'] });
       setShowModal(false);
       resetForm();
@@ -146,12 +156,18 @@ export function SalaryScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => salaryApi.delete(id),
+    mutationFn: async (id: string) => {
+      // Deletion writes reversal ledger entries — must be atomic on the server
+      if (!isOnline) {
+        throw new Error('Go online to delete freight entries. Reversal ledger entries require a live connection.');
+      }
+      return salaryApi.delete(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['freight'] });
       Alert.alert('Deleted', 'Freight entry deleted with reversal ledger entries');
     },
-    onError: (e: any) => Alert.alert('Error', extractApiError(e)),
+    onError: (e: any) => Alert.alert('Error', e?.message ?? extractApiError(e)),
   });
 
   const handleDelete = (id: string, type: string) => {

@@ -2,6 +2,10 @@
 // Offline Operation Queue
 // SQLite-backed FIFO queue for offline mutations.
 // Each operation is idempotent (idempotency_key) so replays are safe.
+//
+// linked_ops: optional follow-up operations that depend on the parent's
+// response. Endpoint templates use {id} which is replaced by the parent
+// response body's `id` field at sync time.
 // ─────────────────────────────────────────────────────────────────────────────
 import SQLite from 'react-native-sqlite-storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,12 +14,23 @@ SQLite.enablePromise(true);
 
 export type OperationStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED' | 'DEAD_LETTER';
 
+/** A follow-up operation chained after its parent succeeds. */
+export interface LinkedOp {
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Endpoint template — `{id}` is replaced with the parent response body's `id` field. */
+  endpoint_template: string;
+  payload: object | null;
+  idempotency_key: string;
+}
+
 export interface QueuedOperation {
   id: string;
   idempotency_key: string;
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   endpoint: string;
   payload: object | null;
+  /** Parsed LinkedOp array (null when none). Stored as JSON text in SQLite. */
+  linked_ops: LinkedOp[] | null;
   status: OperationStatus;
   retry_count: number;
   last_error?: string;
@@ -34,12 +49,17 @@ class OfflineQueue {
         method          TEXT NOT NULL,
         endpoint        TEXT NOT NULL,
         payload         TEXT,
+        linked_ops      TEXT,
         status          TEXT NOT NULL DEFAULT 'PENDING',
         retry_count     INTEGER NOT NULL DEFAULT 0,
         last_error      TEXT,
         created_at      TEXT NOT NULL
       )
     `);
+    // Add linked_ops column to existing DBs (idempotent)
+    await this.db.executeSql(
+      `ALTER TABLE operation_queue ADD COLUMN linked_ops TEXT`,
+    ).catch(() => {}); // column already exists — safe to ignore
     await this.db.executeSql(`
       CREATE INDEX IF NOT EXISTS idx_queue_status ON operation_queue(status, created_at)
     `);
@@ -50,16 +70,19 @@ class OfflineQueue {
     endpoint: string,
     payload: object | null,
     idempotencyKey?: string,
+    linkedOps?: LinkedOp[],
   ): Promise<string> {
     await this.ensureInit();
     const id = uuidv4();
     const key = idempotencyKey ?? uuidv4();
     const now = new Date().toISOString();
+    const linkedJson = linkedOps && linkedOps.length > 0 ? JSON.stringify(linkedOps) : null;
 
     await this.db!.executeSql(
-      `INSERT OR IGNORE INTO operation_queue (id, idempotency_key, method, endpoint, payload, status, retry_count, created_at)
-       VALUES (?, ?, ?, ?, ?, 'PENDING', 0, ?)`,
-      [id, key, method, endpoint, payload ? JSON.stringify(payload) : null, now],
+      `INSERT OR IGNORE INTO operation_queue
+         (id, idempotency_key, method, endpoint, payload, linked_ops, status, retry_count, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0, ?)`,
+      [id, key, method, endpoint, payload ? JSON.stringify(payload) : null, linkedJson, now],
     );
 
     return id;
@@ -120,6 +143,7 @@ class OfflineQueue {
       ops.push({
         ...row,
         payload: row.payload ? JSON.parse(row.payload) : null,
+        linked_ops: row.linked_ops ? JSON.parse(row.linked_ops) : null,
       });
     }
     return ops;

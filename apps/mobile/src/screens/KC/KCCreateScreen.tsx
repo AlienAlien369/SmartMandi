@@ -10,6 +10,9 @@ import type { KCStackParamList } from '../../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { extractApiError } from '../../utils/errorUtils';
+import { useNetworkState } from '../../hooks/useNetworkState';
+import { offlineQueue } from '../../offline/queue';
+import type { LinkedOp } from '../../offline/queue';
 
 type Nav = NativeStackNavigationProp<KCStackParamList>;
 
@@ -31,6 +34,7 @@ export function KCCreateScreen() {
   const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
+  const { isOnline } = useNetworkState();
 
   // Header state
   const [customerId, setCustomerId] = useState('');
@@ -257,12 +261,49 @@ export function KCCreateScreen() {
         idempotency_key: idempKey,
         ...(truckId.trim() ? { truck_id: truckId.trim() } : {}),
       };
+
+      if (!isOnline) {
+        // Build linked_ops for payments: {id} resolved from KC create response at sync time
+        const paymentDate = new Date().toISOString().slice(0, 10);
+        const cashAmt = parseFloat(cashAmount) || 0;
+        const upiAmt = parseFloat(upiAmount) || 0;
+        const balance = estimatedGross - cashAmt - upiAmt;
+        const udharAmt = Math.max(0, balance);
+        const linkedOps: LinkedOp[] = [];
+        if (cashAmt > 0 && cashModeId) {
+          linkedOps.push({
+            method: 'POST',
+            endpoint_template: '/kcs/{id}/payments',
+            payload: { payment_mode_id: cashModeId, amount: cashAmt, payment_date: paymentDate, idempotency_key: `${idempKey}-cash`, is_udhar: false },
+            idempotency_key: `${idempKey}-cash`,
+          });
+        }
+        if (upiAmt > 0 && upiModeId) {
+          linkedOps.push({
+            method: 'POST',
+            endpoint_template: '/kcs/{id}/payments',
+            payload: { payment_mode_id: upiModeId, amount: upiAmt, payment_date: paymentDate, idempotency_key: `${idempKey}-upi`, is_udhar: false },
+            idempotency_key: `${idempKey}-upi`,
+          });
+        }
+        if (udharAmt > 0 && udharModeId) {
+          linkedOps.push({
+            method: 'POST',
+            endpoint_template: '/kcs/{id}/payments',
+            payload: { payment_mode_id: udharModeId, amount: udharAmt, payment_date: paymentDate, idempotency_key: `${idempKey}-udhar`, is_udhar: true },
+            idempotency_key: `${idempKey}-udhar`,
+          });
+        }
+        await offlineQueue.enqueue('POST', '/kcs', payload, idempKey, linkedOps.length > 0 ? linkedOps : undefined);
+        return null;
+      }
+
       const createRes = await kcsApi.create(payload);
       const kcId = createRes?.data?.id;
       if (!kcId) return createRes;
 
       // Add payment records if amounts are filled
-      const today = new Date().toISOString().slice(0, 10);
+      const paymentDate = new Date().toISOString().slice(0, 10);
       const cashAmt = parseFloat(cashAmount) || 0;
       const upiAmt = parseFloat(upiAmount) || 0;
       const balance = estimatedGross - cashAmt - upiAmt;
@@ -271,7 +312,7 @@ export function KCCreateScreen() {
       if (cashAmt > 0 && cashModeId) {
         await kcsApi.addPayment(kcId, {
           payment_mode_id: cashModeId, amount: cashAmt,
-          payment_date: today,
+          payment_date: paymentDate,
           idempotency_key: `${idempKey}-cash`,
           is_udhar: false,
         }).catch(() => {}); // Non-blocking — KC is created
@@ -279,7 +320,7 @@ export function KCCreateScreen() {
       if (upiAmt > 0 && upiModeId) {
         await kcsApi.addPayment(kcId, {
           payment_mode_id: upiModeId, amount: upiAmt,
-          payment_date: today,
+          payment_date: paymentDate,
           idempotency_key: `${idempKey}-upi`,
           is_udhar: false,
         }).catch(() => {});
@@ -288,7 +329,7 @@ export function KCCreateScreen() {
       if (udharAmt > 0 && udharModeId) {
         await kcsApi.addPayment(kcId, {
           payment_mode_id: udharModeId, amount: udharAmt,
-          payment_date: today,
+          payment_date: paymentDate,
           idempotency_key: `${idempKey}-udhar`,
           is_udhar: true,
         }).catch(() => {});
@@ -297,6 +338,12 @@ export function KCCreateScreen() {
       return createRes;
     },
     onSuccess: (res) => {
+      if (!res) {
+        Alert.alert('Saved Offline 📶', 'KC and payments will be submitted when you reconnect.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['kcs'] });
       const kcNum = res?.data?.kc_number ?? res?.data?.id ?? 'KC';
       Alert.alert('KC Created ✅', `KC ${kcNum} created as DRAFT`, [

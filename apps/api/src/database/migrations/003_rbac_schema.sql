@@ -73,22 +73,22 @@ ON CONFLICT (phone) DO NOTHING;
 -- Wrapped in WHERE EXISTS so this is a no-op if the dev firm doesn't exist yet
 -- (production deployments won't have this firm; dev seed creates it separately)
 INSERT INTO firm_module_access (firm_id, module_id, granted_by)
-SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb', id, '00000000-0000-0000-0000-000000000001'
+SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID, id, '00000000-0000-0000-0000-000000000001'::UUID
 FROM module_definitions
-WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb')
+WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, module_id) DO NOTHING;
 
 -- ── Seed: Default role permissions for the seeded firm ───────────────────
 -- FIRM_HEAD: full access to everything
 INSERT INTO role_module_permissions (firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb', 'FIRM_HEAD', id, TRUE, TRUE, TRUE, TRUE
+SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID, 'FIRM_HEAD', id, TRUE, TRUE, TRUE, TRUE
 FROM module_definitions
-WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb')
+WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, role, module_id) DO NOTHING;
 
 -- AUTHORIZER: CRUD on KC, TRUCKS, CUSTOMERS. Read-only on others.
 INSERT INTO role_module_permissions (firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-SELECT vals.firm_id, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
+SELECT vals.firm_id::UUID, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
 FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'AUTHORIZER', 'DASHBOARD',   FALSE, TRUE,  FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'AUTHORIZER', 'TRUCKS',      TRUE,  TRUE,  TRUE,  FALSE),
@@ -102,12 +102,12 @@ FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'AUTHORIZER', 'SETTINGS',    FALSE, TRUE,  FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'AUTHORIZER', 'ROLE_PERMISSIONS', FALSE, FALSE, FALSE, FALSE)
 ) AS vals(firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb')
+WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, role, module_id) DO NOTHING;
 
 -- OPERATOR: Create+Read on TRUCKS, KC, CUSTOMERS. Read-only on others.
 INSERT INTO role_module_permissions (firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-SELECT vals.firm_id, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
+SELECT vals.firm_id::UUID, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
 FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'OPERATOR', 'DASHBOARD',   FALSE, TRUE,  FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'OPERATOR', 'TRUCKS',      TRUE,  TRUE,  FALSE, FALSE),
@@ -121,12 +121,12 @@ FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'OPERATOR', 'SETTINGS',    FALSE, TRUE,  FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'OPERATOR', 'ROLE_PERMISSIONS', FALSE, FALSE, FALSE, FALSE)
 ) AS vals(firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb')
+WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, role, module_id) DO NOTHING;
 
 -- VIEWER: Read-only on most modules
 INSERT INTO role_module_permissions (firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-SELECT vals.firm_id, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
+SELECT vals.firm_id::UUID, vals.role, vals.module_id, vals.can_create, vals.can_read, vals.can_update, vals.can_delete
 FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'VIEWER', 'DASHBOARD',   FALSE, TRUE,  FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'VIEWER', 'TRUCKS',      FALSE, TRUE,  FALSE, FALSE),
@@ -140,5 +140,5 @@ FROM (VALUES
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'VIEWER', 'SETTINGS',    FALSE, FALSE, FALSE, FALSE),
   ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'VIEWER', 'ROLE_PERMISSIONS', FALSE, FALSE, FALSE, FALSE)
 ) AS vals(firm_id, role, module_id, can_create, can_read, can_update, can_delete)
-WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb')
+WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, role, module_id) DO NOTHING;

@@ -2,12 +2,16 @@
 -- Run: docker cp dev_seed.sql smart-mandi-postgres:/tmp/ && docker exec smart-mandi-postgres psql -U smart_mandi_user -d smart_mandi -f /tmp/dev_seed.sql
 -- Login: phone=9999999999, otp=123456 (any), firm_id=115c557f-0c07-4162-b3bc-84f1feab88fb
 
-INSERT INTO firms (id, name, apmc_code, is_active)
+INSERT INTO firms (id, name, apmc_name, is_active)
 VALUES ('115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Mandi Firm', 'DEV001', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO users (id, firm_id, name, phone, role, is_active)
-VALUES ('5e138578-f0a6-4679-a463-79730d20b035', '115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Admin', '9999999999', 'FIRM_HEAD', true)
+VALUES
+  ('5e138578-f0a6-4679-a463-79730d20b035', '115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Admin',      '9999999999', 'FIRM_HEAD',  true),
+  ('a1b2c3d4-0000-0000-0000-000000000001', '115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Authorizer', '9111111111', 'AUTHORIZER', true),
+  ('a1b2c3d4-0000-0000-0000-000000000002', '115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Operator',   '9222222222', 'OPERATOR',   true),
+  ('a1b2c3d4-0000-0000-0000-000000000003', '115c557f-0c07-4162-b3bc-84f1feab88fb', 'Dev Viewer',     '9333333333', 'VIEWER',     true)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO config_versions (id, firm_id, version, effective_from, is_active, created_by)

@@ -37,6 +37,8 @@ services:
     container_name: smart-mandi-api
     ports:
       - "3000:3000"
+    env_file:
+      - ./apps/api/.env
     environment:
       NODE_ENV: development
       DB_HOST: postgres

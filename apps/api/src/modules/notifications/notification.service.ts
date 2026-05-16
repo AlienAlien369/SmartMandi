@@ -30,7 +30,12 @@ export class NotificationService {
       }
       let credential: any;
       if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+        const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+        const serviceAccount = JSON.parse(raw);
+        // dotenv may keep \n as literal backslash-n inside the private_key string
+        if (serviceAccount.private_key) {
+          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
         credential = admin.credential.cert(serviceAccount);
       } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires

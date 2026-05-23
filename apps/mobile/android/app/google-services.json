@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "smart-mandi-placeholder",
-    "storage_bucket": "smart-mandi-placeholder.appspot.com"
+    "project_number": "106133760771310742299",
+    "project_id": "smartmandi-5b175",
+    "storage_bucket": "smartmandi-5b175.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:106133760771310742299:android:REPLACE_WITH_APP_ID",
         "android_client_info": {
           "package_name": "com.smartmandi"
         }

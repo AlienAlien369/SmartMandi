@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "106133760771310742299",
+    "project_number": "296849487673",
     "project_id": "smartmandi-5b175",
-    "storage_bucket": "smartmandi-5b175.appspot.com"
+    "storage_bucket": "smartmandi-5b175.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:106133760771310742299:android:REPLACE_WITH_APP_ID",
+        "mobilesdk_app_id": "1:296849487673:android:9d34a154f72c516f91dae8",
         "android_client_info": {
           "package_name": "com.smartmandi"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "REPLACE_WITH_REAL_FIREBASE_API_KEY"
+          "current_key": "AIzaSyCnTtLY9MgMz357Sbe8fMgnX69hZZ0zXqc"
         }
       ],
       "services": {

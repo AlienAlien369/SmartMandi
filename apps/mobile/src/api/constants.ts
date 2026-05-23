@@ -19,5 +19,5 @@
  * ⚠️  Never hardcode a production IP directly here — use the .env file.
  */
 export const API_BASE_URL = __DEV__
-  ? 'http://192.168.1.36:3000/api/v1'       // ← update to match your .env API_BASE_URL_DEV
-  : 'http://13.205.154.123:3000/api/v1';    // ← update to match your .env API_BASE_URL_PROD
+  ? 'http://13.205.154.123:3000/api/v1'     // ← dev: pointing to EC2 (change to LAN IP for local dev)
+  : 'http://13.205.154.123:3000/api/v1';    // ← prod: EC2 server

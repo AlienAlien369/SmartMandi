@@ -12,8 +12,8 @@ async function bootstrap(): Promise<void> {
     logger: ['error', 'warn', 'log', 'debug'],
   });
 
-  // Security
-  app.use(helmet());
+  // Security — contentSecurityPolicy disabled so Swagger UI loads its inline assets
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
   app.enableCors({ origin: process.env.CORS_ORIGIN || '*' });
 
@@ -37,8 +37,8 @@ async function bootstrap(): Promise<void> {
   // Global logging interceptor
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  // Swagger documentation
-  if (process.env.NODE_ENV !== 'production') {
+  // Swagger documentation — enabled in dev and when SWAGGER_ENABLED=true
+  if (process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true') {
     const config = new DocumentBuilder()
       .setTitle('Smart Mandi API')
       .setDescription('Multi-tenant SaaS for APMC mandi trading firms')

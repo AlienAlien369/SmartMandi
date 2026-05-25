@@ -26,6 +26,8 @@ import { SalaryModule } from './modules/salary/salary.module';
 import { UsersModule } from './modules/users/users.module';
 // Phase 6 — RBAC
 import { RbacModule } from './modules/rbac/rbac.module';
+// Notifications
+import { NotificationModule } from './modules/notifications/notification.module';
 
 @Module({
   imports: [
@@ -92,6 +94,8 @@ import { RbacModule } from './modules/rbac/rbac.module';
     UsersModule,
     // Feature modules — Phase 6 — RBAC
     RbacModule,
+    // Notifications
+    NotificationModule,
   ],
   providers: [
     // Global rate limiting

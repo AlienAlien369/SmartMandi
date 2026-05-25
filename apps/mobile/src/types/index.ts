@@ -203,4 +203,5 @@ export type MoreStackParamList = {
   Settings: undefined;
   SummarySheets: undefined;
   RolePermissions: undefined;
+  Notifications: undefined;
 };

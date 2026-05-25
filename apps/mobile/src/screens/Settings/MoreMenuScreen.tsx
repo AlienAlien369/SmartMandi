@@ -10,6 +10,7 @@ import { logout } from '../../store/slices/authSlice';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 
 const MODULE_MENU_ITEMS = [
+  { moduleId: 'NOTIFICATIONS',    icon: '🔔', label: 'Notifications',     screen: 'Notifications' },
   { moduleId: 'REPORTS',          icon: '📊', label: 'Reports',          screen: 'Reports' },
   { moduleId: 'LEDGER',           icon: '📒', label: 'Ledger',           screen: 'Ledger' },
   { moduleId: 'SUMMARY_SHEETS',   icon: '📄', label: 'Summary Sheets',   screen: 'SummarySheets' },

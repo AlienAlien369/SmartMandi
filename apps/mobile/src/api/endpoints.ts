@@ -93,6 +93,12 @@ export const configApi = {
   getProduces: () => api.get('/config/produces'),
 };
 
+// ─── Notifications ───────────────────────────────────────────────────────────
+export const notificationApi = {
+  getHistory: (params?: { page?: number; limit?: number }) =>
+    api.get('/notifications/history', { params }),
+};
+
 // ─── RBAC ─────────────────────────────────────────────────────────────────────
 export const rbacApi = {
   getMyModules: () => api.get('/rbac/my-modules'),

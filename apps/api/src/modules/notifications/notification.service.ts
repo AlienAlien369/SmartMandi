@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { NotificationHistory } from './notification-history.entity';
 
 /**
  * NotificationService — sends FCM push notifications via firebase-admin.
@@ -16,7 +17,11 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private messaging: any = null;
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectRepository(NotificationHistory)
+    private readonly historyRepo: Repository<NotificationHistory>,
+  ) {
     this.initFirebase();
   }
 
@@ -60,6 +65,7 @@ export class NotificationService {
     kcNumber: string;
     customerName: string;
     netPayable: string;
+    kcId?: string;
   }): Promise<void> {
     if (!this.messaging) return;
 
@@ -70,12 +76,12 @@ export class NotificationService {
       minimumFractionDigits: 2, maximumFractionDigits: 2,
     });
 
-    await this.sendToTokens(
-      tokens,
-      `KC #${opts.kcNumber} Authorized ✅`,
-      `${opts.customerName} — ₹${amount}`,
-      { type: 'KC_AUTHORIZED', kc_number: opts.kcNumber, firm_id: opts.firmId },
-    );
+    const title = `KC #${opts.kcNumber} Authorized ✅`;
+    const body = `${opts.customerName} — ₹${amount}`;
+    const data: Record<string, string> = { type: 'KC_AUTHORIZED', kc_number: opts.kcNumber, firm_id: opts.firmId };
+    if (opts.kcId) data.kc_id = opts.kcId;
+
+    await this.sendToTokens(tokens, title, body, data, opts.firmId, 'KC_AUTHORIZED', opts.kcId ?? null);
   }
 
   /** Generic: send to all active firm users except actor */
@@ -89,7 +95,17 @@ export class NotificationService {
     if (!this.messaging) return;
     const tokens = await this.getActiveTokens(firmId, excludeUserId);
     if (!tokens.length) return;
-    await this.sendToTokens(tokens, title, body, data);
+    await this.sendToTokens(tokens, title, body, data, firmId, data.type ?? 'GENERAL', null);
+  }
+
+  /** Get notification history for a firm (paginated, newest first) */
+  async getHistory(firmId: string, page = 1, limit = 50): Promise<NotificationHistory[]> {
+    return this.historyRepo.find({
+      where: { firm_id: firmId },
+      order: { created_at: 'DESC' },
+      skip: (page - 1) * limit,
+      take: Math.min(limit, 100),
+    });
   }
 
   /** Get FCM tokens for all active firm users. Optionally excludes one user. */
@@ -117,6 +133,9 @@ export class NotificationService {
     title: string,
     body: string,
     data: Record<string, string>,
+    firmId?: string,
+    type?: string,
+    refId?: string | null,
   ): Promise<void> {
     try {
       const response = await this.messaging.sendEachForMulticast({
@@ -139,6 +158,11 @@ export class NotificationService {
 
       this.logger.log(`FCM: ${response.successCount}/${tokens.length} delivered — "${title}"`);
 
+      // Persist to notification_history if firmId provided
+      if (firmId) {
+        await this.saveHistory(firmId, title, body, type ?? 'GENERAL', refId ?? null, response.successCount);
+      }
+
       // Remove stale tokens
       response.responses.forEach((r: any, idx: number) => {
         if (!r.success && r.error?.code === 'messaging/registration-token-not-registered') {
@@ -147,6 +171,22 @@ export class NotificationService {
       });
     } catch (err) {
       this.logger.error(`FCM sendEachForMulticast failed: ${err}`);
+    }
+  }
+
+  private async saveHistory(
+    firmId: string,
+    title: string,
+    body: string,
+    type: string,
+    refId: string | null,
+    sentTo: number,
+  ): Promise<void> {
+    try {
+      const record = this.historyRepo.create({ firm_id: firmId, title, body, type, ref_id: refId, sent_to: sentTo });
+      await this.historyRepo.save(record);
+    } catch (err) {
+      this.logger.warn(`Failed to save notification history: ${err}`);
     }
   }
 

@@ -25,6 +25,7 @@ import { UsersScreen }         from '../screens/Users/UsersScreen';
 import { SettingsScreen }      from '../screens/SettingsConfig/SettingsScreen';
 import { SummarySheetsScreen } from '../screens/SummarySheets/SummarySheetsScreen';
 import { RolePermissionsScreen }from '../screens/Settings/RolePermissionsScreen';
+import { NotificationHistoryScreen } from '../screens/Notifications/NotificationHistoryScreen';
 
 import type {
   MainTabParamList, TruckStackParamList, KCStackParamList,
@@ -93,6 +94,7 @@ function MoreNavigator() {
       <MoreStack.Screen name="Users"            component={UsersScreen}            options={{ title: 'Team Members' }} />
       <MoreStack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings & Config' }} />
       <MoreStack.Screen name="RolePermissions"  component={RolePermissionsScreen}  options={{ title: 'Role Permissions' }} />
+      <MoreStack.Screen name="Notifications"    component={NotificationHistoryScreen} options={{ title: 'Notifications' }} />
     </MoreStack.Navigator>
   );
 }

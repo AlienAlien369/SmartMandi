@@ -56,7 +56,7 @@ export class KcPdfService {
               k.total_weight_kg, k.total_gross_amount, k.total_apmc_fee,
               k.total_baardana_cost, k.total_net_payable,
               c.name AS customer_name,
-              t.registration_number AS truck_number,
+              t.truck_number AS truck_number,
               t.source_location AS truck_location,
               t.inam_amount,
               f.name AS firm_name,

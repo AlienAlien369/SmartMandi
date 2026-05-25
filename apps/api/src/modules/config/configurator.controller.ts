@@ -23,6 +23,12 @@ export class ConfiguratorController {
     return this.configuratorService.getActivePaymentModes(firmId);
   }
 
+  @Get('produces')
+  @ApiOperation({ summary: 'List active produce configs for the firm' })
+  getProduces(@CurrentFirmId() firmId: string) {
+    return this.configuratorService.getActiveProduces(firmId);
+  }
+
   @Get('baardana')
   @ApiOperation({ summary: 'Get current baardana config for the firm (pre-fills KC line item defaults)' })
   getBaardanaConfig(@CurrentFirmId() firmId: string) {

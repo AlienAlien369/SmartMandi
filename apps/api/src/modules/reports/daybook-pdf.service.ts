@@ -107,11 +107,11 @@ export class DaybookPdfService {
     const kcRows = await this.dataSource.query<any[]>(
       `SELECT
          t.id             AS truck_id,
-         t.registration_number,
+         t.truck_number   AS truck_number,
          t.source_location,
          t.driver_name,
          t.inam_amount,
-         t.arrival_date,
+         t.sale_date      AS arrival_date,
          k.kc_number,
          k.sale_date,
          c.name           AS customer_name,
@@ -131,7 +131,7 @@ export class DaybookPdfService {
        WHERE k.firm_id = $1
          AND k.sale_date::date BETWEEN $2::date AND $3::date
          AND k.status = 'AUTHORIZED'
-       ORDER BY t.arrival_date ASC, t.registration_number ASC, k.kc_number ASC`,
+       ORDER BY t.sale_date ASC, t.truck_number ASC, k.kc_number ASC`,
       [firmId, dateFrom, dateTo],
     );
 
@@ -158,7 +158,7 @@ export class DaybookPdfService {
         truckMap.set(r.truck_id, {
           truckId: r.truck_id,
           seq: seq++,
-          regNum: r.registration_number,
+          regNum: r.truck_number,
           sourceLocation: r.source_location,
           driverName: r.driver_name,
           inamAmount: Number(r.inam_amount ?? 0),

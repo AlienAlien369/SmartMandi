@@ -12,6 +12,7 @@ import { ApmcFeeConfig } from './entities/apmc-fee-config.entity';
 import { CommissionConfig } from './entities/commission-config.entity';
 import { BaardanaConfig } from './entities/baardana-config.entity';
 import { PaymentModeConfig } from './entities/payment-mode-config.entity';
+import { ProduceConfig } from './entities/produce-config.entity';
 import { ConfigScope } from '../../common/enums';
 
 @Injectable()
@@ -25,7 +26,45 @@ export class ConfiguratorService {
     @InjectRepository(CommissionConfig) private readonly commissionRepo: Repository<CommissionConfig>,
     @InjectRepository(BaardanaConfig) private readonly baardanaRepo: Repository<BaardanaConfig>,
     @InjectRepository(PaymentModeConfig) private readonly paymentModeRepo: Repository<PaymentModeConfig>,
+    @InjectRepository(ProduceConfig) private readonly produceRepo: Repository<ProduceConfig>,
   ) {}
+
+  async getActiveProduces(firmId: string): Promise<ProduceConfig[]> {
+    return this.produceRepo.find({
+      where: { firm_id: firmId, is_active: true },
+      order: { sort_order: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async getAllProducesForFirm(firmId: string): Promise<ProduceConfig[]> {
+    return this.produceRepo.find({
+      where: { firm_id: firmId },
+      order: { sort_order: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async createProduceForFirm(firmId: string, dto: { name: string; sort_order?: number }): Promise<ProduceConfig> {
+    const existing = await this.produceRepo.findOne({ where: { firm_id: firmId, name: dto.name.trim() } });
+    if (existing) {
+      // Re-activate if it was disabled
+      existing.is_active = true;
+      return this.produceRepo.save(existing);
+    }
+    const produce = this.produceRepo.create({
+      firm_id: firmId,
+      name: dto.name.trim(),
+      sort_order: dto.sort_order ?? 0,
+      is_active: true,
+    });
+    return this.produceRepo.save(produce);
+  }
+
+  async toggleProduceForFirm(firmId: string, produceId: string): Promise<ProduceConfig> {
+    const produce = await this.produceRepo.findOne({ where: { id: produceId, firm_id: firmId } });
+    if (!produce) throw new NotFoundException('Produce not found');
+    produce.is_active = !produce.is_active;
+    return this.produceRepo.save(produce);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CONFIG VERSION RESOLUTION

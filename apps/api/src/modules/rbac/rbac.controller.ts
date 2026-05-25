@@ -405,5 +405,47 @@ export class SuperAdminController {
     this.verifySAToken(adminToken);
     return this.rbacService.setFirmPdfConfig(firmId, body);
   }
+
+  // ── Firm Config: Produces ─────────────────────────────────────────────────
+
+  /** List all produces for a firm (SA) */
+  @Public()
+  @Get('firms/:firmId/config/produces')
+  @ApiOperation({ summary: 'List all produce configs for a firm (SA only)' })
+  async getFirmProduces(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    return this.configuratorService.getAllProducesForFirm(firmId);
+  }
+
+  /** Create a produce for a firm (SA) */
+  @Public()
+  @Post('firms/:firmId/config/produces')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a produce config for a firm (SA only)' })
+  async createFirmProduce(
+    @Param('firmId') firmId: string,
+    @Query('admin_token') adminToken: string,
+    @Body() body: { name: string; sort_order?: number },
+  ) {
+    this.verifySAToken(adminToken);
+    if (!body.name?.trim()) throw new BadRequestException('name is required');
+    return this.configuratorService.createProduceForFirm(firmId, body);
+  }
+
+  /** Toggle produce active/inactive (SA) */
+  @Public()
+  @Delete('firms/:firmId/config/produces/:produceId')
+  @ApiOperation({ summary: 'Toggle produce active/inactive for a firm (SA only)' })
+  async toggleFirmProduce(
+    @Param('firmId') firmId: string,
+    @Param('produceId') produceId: string,
+    @Query('admin_token') adminToken: string,
+  ) {
+    this.verifySAToken(adminToken);
+    return this.configuratorService.toggleProduceForFirm(firmId, produceId);
+  }
 }
 

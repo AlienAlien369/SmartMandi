@@ -17,7 +17,7 @@ type Firm = {
 };
 type Module = { id: string; label: string; description: string; sort_order: number };
 
-type ActiveModal = 'none' | 'modules' | 'create' | 'edit' | 'config' | 'permissions' | 'grades';
+type ActiveModal = 'none' | 'modules' | 'create' | 'edit' | 'config' | 'permissions' | 'grades' | 'produces';
 
 const EMPTY_FORM = { name: '', apmc_name: '', contact_phone: '', address: '', head_name: '', head_phone: '' };
 
@@ -75,6 +75,12 @@ export function SADashboardScreen() {
   const [gradesLoading, setGradesLoading] = useState(false);
   const [gradeForm, setGradeForm] = useState({ grade_code: '', grade_label: '' });
   const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
+
+  // Produces modal state
+  type ProduceItem = { id: string; name: string; sort_order: number; is_active: boolean };
+  const [produceList, setProduceList] = useState<ProduceItem[]>([]);
+  const [producesLoading, setProducesLoading] = useState(false);
+  const [produceForm, setProduceForm] = useState({ name: '' });
 
   // Permissions modal state
   const [selectedRole, setSelectedRole] = useState<ConfigurableRole>('AUTHORIZER');
@@ -210,6 +216,18 @@ export function SADashboardScreen() {
     finally { setGradesLoading(false); }
   };
 
+  const openProduces = async (firm: Firm) => {
+    setSelectedFirm(firm);
+    setProduceForm({ name: '' });
+    setProducesLoading(true);
+    setActiveModal('produces');
+    try {
+      const res = await superAdminApi.getProduces(firm.id, saToken);
+      setProduceList(res.data as any[]);
+    } catch { setProduceList([]); }
+    finally { setProducesLoading(false); }
+  };
+
   const handleRoleSwitch = async (role: ConfigurableRole) => {
     setSelectedRole(role);
     setPermsDirty(false);
@@ -274,6 +292,31 @@ export function SADashboardScreen() {
       await refreshGrades(selectedFirm.id);
     },
     onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to toggle grade'),
+  });
+
+  const refreshProduces = async (firmId: string) => {
+    const res = await superAdminApi.getProduces(firmId, saToken);
+    setProduceList(res.data as any[]);
+  };
+
+  const addProduceMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFirm) return;
+      if (!produceForm.name.trim()) throw new Error('Produce name is required');
+      await superAdminApi.createProduce(selectedFirm.id, { name: produceForm.name.trim() }, saToken);
+      await refreshProduces(selectedFirm.id);
+    },
+    onSuccess: () => setProduceForm({ name: '' }),
+    onError: (e: any) => Alert.alert('Error', e?.message ?? e?.response?.data?.message ?? 'Failed to add produce'),
+  });
+
+  const toggleProduceMutation = useMutation({
+    mutationFn: async (produceId: string) => {
+      if (!selectedFirm) return;
+      await superAdminApi.toggleProduce(selectedFirm.id, produceId, saToken);
+      await refreshProduces(selectedFirm.id);
+    },
+    onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to toggle produce'),
   });
 
   const saveConfigMutation = useMutation({
@@ -411,7 +454,7 @@ export function SADashboardScreen() {
             <FirmCard key={firm.id} firm={firm}
               onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
               onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
-              onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)}
+              onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)} onProduces={() => openProduces(firm)}
             />
           ))}
           {inactiveFirms.length > 0 && (
@@ -421,7 +464,7 @@ export function SADashboardScreen() {
                 <FirmCard key={firm.id} firm={firm} inactive
                   onModules={() => openModules(firm)} onConfig={() => openConfig(firm)}
                   onEdit={() => openEdit(firm)} onDelete={() => confirmDelete(firm)}
-                  onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)}
+                  onPermissions={() => openPermissions(firm)} onGrades={() => openGrades(firm)} onProduces={() => openProduces(firm)}
                 />
               ))}
             </>
@@ -947,13 +990,76 @@ export function SADashboardScreen() {
           )}
         </View>}
       </Modal>
+      {/* ── Produce Config Modal ── */}
+      <Modal visible={activeModal === 'produces'} animationType="slide" presentationStyle="pageSheet">
+        {activeModal === 'produces' && <View style={styles.sheetContainer}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={styles.flex1}>
+              <Text style={styles.sheetTitle}>{'Produce Config'}</Text>
+              <Text style={styles.sheetSub}>{selectedFirm?.name ?? ''}</Text>
+            </View>
+            <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeModal}>
+              <Text style={styles.sheetCloseText}>{'✕'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sheetHint}>{'Configure the produce/maal items available for this firm\'s truck screen.'}</Text>
+
+          {producesLoading ? (
+            <ActivityIndicator size="large" color="#7c3aed" style={{ marginTop: 40 }} />
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+              {produceList.length === 0 && (
+                <View style={{ alignItems: 'center', marginTop: 32 }}>
+                  <Text style={[styles.sheetSub, { fontSize: 14 }]}>{'No produces yet. Add one below.'}</Text>
+                </View>
+              )}
+              {produceList.map((p, idx) => (
+                <View key={p.id} style={[styles.permRow, idx % 2 === 0 && styles.permRowAlt, { paddingVertical: 10 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+                    <Text style={[styles.permModuleName, !p.is_active && { color: '#475569' }]} numberOfLines={1}>{p.name}</Text>
+                    {!p.is_active && <Text style={{ fontSize: 11, color: '#475569' }}>{'(off)'}</Text>}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.permBox, { width: 44, borderColor: p.is_active ? '#ef4444' : '#10b981' }]}
+                    onPress={() => toggleProduceMutation.mutate(p.id)}
+                    disabled={toggleProduceMutation.isPending}
+                  >
+                    <Text style={{ color: p.is_active ? '#f87171' : '#34d399', fontSize: 12 }}>{p.is_active ? '🚫' : '✓'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={{ padding: 16, marginTop: 12, backgroundColor: 'rgba(16,185,129,0.06)', borderRadius: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e293b', marginBottom: 10 }}>{'＋ Add New Produce'}</Text>
+                <TextInput
+                  style={[styles.fieldInput, { marginBottom: 8 }]}
+                  value={produceForm.name}
+                  onChangeText={v => setProduceForm({ name: v })}
+                  placeholder={'e.g. Wheat, Onion, Tomato'}
+                  placeholderTextColor={'#94a3b8'}
+                />
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: '#10b981' }, addProduceMutation.isPending && { opacity: 0.6 }]}
+                  onPress={() => addProduceMutation.mutate()}
+                  disabled={addProduceMutation.isPending}
+                >
+                  {addProduceMutation.isPending
+                    ? <ActivityIndicator color={'#fff'} />
+                    : <Text style={styles.primaryBtnText}>{'Add Produce'}</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          )}
+        </View>}
+      </Modal>
     </View>
   );
 }
 
-function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, onGrades, inactive }: {
+function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, onGrades, onProduces, inactive }: {
   firm: Firm; onModules: () => void; onConfig: () => void; onEdit: () => void;
-  onDelete: () => void; onPermissions: () => void; onGrades: () => void; inactive?: boolean;
+  onDelete: () => void; onPermissions: () => void; onGrades: () => void; onProduces: () => void; inactive?: boolean;
 }) {
   const initials = firm.name.split(' ').slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
   return (
@@ -995,6 +1101,10 @@ function FirmCard({ firm, onModules, onConfig, onEdit, onDelete, onPermissions, 
           <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(251,191,36,0.12)' }]} onPress={onGrades}>
             <Text style={styles.actionTileIcon}>🏷️</Text>
             <Text style={[styles.actionTileText, { color: '#fbbf24' }]}>Grades</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(16,185,129,0.12)' }]} onPress={onProduces}>
+            <Text style={styles.actionTileIcon}>🌾</Text>
+            <Text style={[styles.actionTileText, { color: '#34d399' }]}>Produces</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.actionTile, { backgroundColor: 'rgba(245,158,11,0.12)' }]} onPress={onEdit}>
             <Text style={styles.actionTileIcon}>✏️</Text>

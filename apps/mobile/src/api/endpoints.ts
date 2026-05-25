@@ -90,6 +90,7 @@ export const configApi = {
   getGrades: () => api.get('/config/grades'),
   getPaymentModes: () => api.get('/config/payment-modes'),
   getBaardanaConfig: () => api.get('/config/baardana'),
+  getProduces: () => api.get('/config/produces'),
 };
 
 // ─── RBAC ─────────────────────────────────────────────────────────────────────
@@ -166,4 +167,10 @@ export const superAdminApi = {
     axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/pdf?admin_token=${token}`),
   setPdfConfig: (firmId: string, data: object, token: string) =>
     axios.put(`${SA_BASE}/super-admin/firms/${firmId}/config/pdf?admin_token=${token}`, data),
+  getProduces: (firmId: string, token: string) =>
+    axios.get(`${SA_BASE}/super-admin/firms/${firmId}/config/produces?admin_token=${token}`),
+  createProduce: (firmId: string, data: { name: string; sort_order?: number }, token: string) =>
+    axios.post(`${SA_BASE}/super-admin/firms/${firmId}/config/produces?admin_token=${token}`, data),
+  toggleProduce: (firmId: string, produceId: string, token: string) =>
+    axios.delete(`${SA_BASE}/super-admin/firms/${firmId}/config/produces/${produceId}?admin_token=${token}`),
 };

@@ -6,6 +6,7 @@ import { ApmcFeeConfig } from './entities/apmc-fee-config.entity';
 import { CommissionConfig } from './entities/commission-config.entity';
 import { BaardanaConfig } from './entities/baardana-config.entity';
 import { PaymentModeConfig } from './entities/payment-mode-config.entity';
+import { ProduceConfig } from './entities/produce-config.entity';
 import { ConfiguratorService } from './configurator.service';
 import { ConfiguratorController } from './configurator.controller';
 
@@ -13,7 +14,7 @@ import { ConfiguratorController } from './configurator.controller';
   imports: [
     TypeOrmModule.forFeature([
       ConfigVersion, GradeConfig, ApmcFeeConfig,
-      CommissionConfig, BaardanaConfig, PaymentModeConfig,
+      CommissionConfig, BaardanaConfig, PaymentModeConfig, ProduceConfig,
     ]),
   ],
   controllers: [ConfiguratorController],

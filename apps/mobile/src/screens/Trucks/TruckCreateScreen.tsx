@@ -70,6 +70,7 @@ export function TruckCreateScreen() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['trucks'] });
+      queryClient.invalidateQueries({ queryKey: ['trucks-available'] });
       Alert.alert('Success', 'Truck scheduled!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     },
     onError: (e: any) => Alert.alert('Error', extractApiError(e)),
@@ -79,7 +80,7 @@ export function TruckCreateScreen() {
   const isValid = form.truck_number.trim() && form.driver_name.trim() && form.produce_name.trim() && form.sale_date;
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Input

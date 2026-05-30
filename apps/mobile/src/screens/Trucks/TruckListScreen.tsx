@@ -80,7 +80,7 @@ export function TruckListScreen() {
   });
 
   const trucks: Truck[] = data?.data ?? [];
-  const total: number   = data?.meta?.total ?? 0;
+  const total: number   = data?.meta?.total ?? trucks.length;
 
   const dateLabelShort = useMemo(() => {
     if (datePreset === 'today')  return 'Today';

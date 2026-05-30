@@ -28,6 +28,7 @@ export interface AuthState {
   saToken: string | null;
   accessibleModuleIds: string[];
   permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }>;
+  loginError?: string | null;
 }
 
 export interface Truck {
@@ -70,10 +71,16 @@ export interface KcLineItem {
 export interface KcPayment {
   id: string;
   kc_id: string;
+  payment_mode_id: string;
   amount: string;
-  mode: string;
-  reference?: string;
-  paid_at: string;
+  payment_reference?: string | null;
+  payment_date: string;
+  is_udhar: boolean;
+  notes?: string | null;
+  created_at: string;
+  // legacy aliases (some API versions)
+  mode?: string;
+  paid_at?: string;
 }
 
 export interface KacchaChittha {
@@ -81,6 +88,7 @@ export interface KacchaChittha {
   firm_id: string;
   kc_number: string;
   customer_id: string;
+  customer_name?: string;
   truck_id?: string;
   sale_date: string;
   status: KCStatus;
@@ -107,6 +115,7 @@ export interface Customer {
   is_active: boolean;
   outstanding_udhar?: number;
   kc_count?: number;
+  credit_balance?: number;
 }
 
 export interface LedgerEntry {

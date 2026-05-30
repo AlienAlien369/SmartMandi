@@ -70,6 +70,21 @@ export class Truck {
   @Column({ type: 'timestamptz', nullable: true })
   closed_at: Date;
 
+  @Column({ type: 'text', nullable: true })
+  source_location: string | null;
+
+  @Column({ type: 'text', unique: true, nullable: true })
+  idempotency_key: string | null;
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
+  @Column({ type: 'boolean', default: false })
+  is_dirty: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  last_synced_at: Date | null;
+
   @Column('uuid')
   created_by: string;
 

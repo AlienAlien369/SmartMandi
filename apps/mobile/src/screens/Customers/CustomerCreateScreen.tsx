@@ -70,7 +70,7 @@ export function CustomerCreateScreen() {
   const F = (k: string) => ({ value: form[k as keyof typeof form], onChangeText: (v: string) => setForm(f => ({ ...f, [k]: v })) });
 
   return (
-    <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Field label="Name *" placeholder="Customer full name" {...F('name')} />

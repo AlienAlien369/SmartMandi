@@ -173,16 +173,18 @@ export class ReportsService {
 
   /** Generate CSV for KC list — supports single date or date range */
   async exportKcsCsv(firmId: string, dateFrom: string, dateTo: string): Promise<string> {
-    const dateCondition = dateFrom === dateTo
-      ? `kc.sale_date = '${dateFrom}'`
-      : `kc.sale_date BETWEEN '${dateFrom}' AND '${dateTo}'`;
-
-    const kcs = await this.kcRepo
+    const qb = this.kcRepo
       .createQueryBuilder('kc')
-      .leftJoinAndSelect('kc.line_items', 'li')
       .where('kc.firm_id = :firmId', { firmId })
-      .andWhere('kc.status = :status', { status: KCStatus.AUTHORIZED })
-      .andWhere(dateCondition)
+      .andWhere('kc.status = :status', { status: KCStatus.AUTHORIZED });
+
+    if (dateFrom === dateTo) {
+      qb.andWhere('kc.sale_date = :date', { date: dateFrom });
+    } else {
+      qb.andWhere('kc.sale_date BETWEEN :from AND :to', { from: dateFrom, to: dateTo });
+    }
+
+    const kcs = await qb
       .orderBy('kc.sale_date', 'ASC')
       .addOrderBy('kc.kc_number', 'ASC')
       .getMany();
@@ -229,14 +231,17 @@ export class ReportsService {
   }
 
   async exportTrucksCsv(firmId: string, dateFrom: string, dateTo: string): Promise<string> {
-    const dateCondition = dateFrom === dateTo
-      ? `t.sale_date = '${dateFrom}'`
-      : `t.sale_date BETWEEN '${dateFrom}' AND '${dateTo}'`;
-
-    const trucks = await this.truckRepo
+    const tqb = this.truckRepo
       .createQueryBuilder('t')
-      .where('t.firm_id = :firmId', { firmId })
-      .andWhere(dateCondition)
+      .where('t.firm_id = :firmId', { firmId });
+
+    if (dateFrom === dateTo) {
+      tqb.andWhere('t.sale_date = :date', { date: dateFrom });
+    } else {
+      tqb.andWhere('t.sale_date BETWEEN :from AND :to', { from: dateFrom, to: dateTo });
+    }
+
+    const trucks = await tqb
       .orderBy('t.sale_date', 'ASC')
       .addOrderBy('t.created_at', 'ASC')
       .getMany();

@@ -121,7 +121,8 @@ export class SuperAdminController {
   /** List all platform modules */
   @Public()
   @Get('modules')
-  getAllModules() {
+  getAllModules(@Query('admin_token') adminToken: string) {
+    this.verifySAToken(adminToken);
     return this.rbacService.getAllModules();
   }
 
@@ -180,7 +181,8 @@ export class SuperAdminController {
   /** Get a firm's module access */
   @Public()
   @Get('firms/:firmId/modules')
-  async getFirmModules(@Param('firmId') firmId: string) {
+  async getFirmModules(@Param('firmId') firmId: string, @Query('admin_token') adminToken: string) {
+    this.verifySAToken(adminToken);
     const records = await this.rbacService.getFirmModules(firmId);
     return { module_ids: records.filter(r => r.is_active).map(r => r.module_id) };
   }
@@ -201,7 +203,8 @@ export class SuperAdminController {
   /** Get all super admins */
   @Public()
   @Get('admins')
-  getAdmins() {
+  getAdmins(@Query('admin_token') adminToken: string) {
+    this.verifySAToken(adminToken);
     return this.rbacService.getAllSuperAdmins();
   }
 

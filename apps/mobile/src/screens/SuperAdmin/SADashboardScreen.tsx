@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   ActivityIndicator, Alert, Modal, Switch, TextInput, KeyboardAvoidingView, Platform,
@@ -87,6 +87,8 @@ export function SADashboardScreen() {
   const [pendingPerms, setPendingPerms] = useState<Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }>>({});
   const [loadingPerms, setLoadingPerms] = useState(false);
   const [permsDirty, setPermsDirty] = useState(false);
+  // Store cached permissions in a ref so it survives re-renders and hot-reload
+  const allPermsRef = useRef<any[]>([]);
 
   const { data: firms = [], isLoading: firmsLoading, refetch: refetchFirms } = useQuery({
     queryKey: ['sa', 'firms'],
@@ -196,7 +198,7 @@ export function SADashboardScreen() {
       const allPerms = res.data as any[];
       await loadPermsForRole(firm.id, 'AUTHORIZER', allPerms);
       // Cache all perms for role switching
-      (openPermissions as any)._allPerms = allPerms;
+      allPermsRef.current = allPerms;
     } catch {
       setPendingPerms({});
       setLoadingPerms(false);
@@ -231,7 +233,7 @@ export function SADashboardScreen() {
   const handleRoleSwitch = async (role: ConfigurableRole) => {
     setSelectedRole(role);
     setPermsDirty(false);
-    const allPerms = (openPermissions as any)._allPerms ?? [];
+    const allPerms = allPermsRef.current ?? [];
     await loadPermsForRole(selectedFirm!.id, role, allPerms);
   };
 
@@ -250,7 +252,7 @@ export function SADashboardScreen() {
       await superAdminApi.setRolePermissions(selectedFirm.id, selectedRole, permissions, saToken);
       // Refresh cached perms
       const res = await superAdminApi.getRolePermissions(selectedFirm.id, saToken);
-      (openPermissions as any)._allPerms = res.data;
+      allPermsRef.current = res.data as any[];
     },
     onSuccess: () => { setPermsDirty(false); Alert.alert('Saved ✅', `${selectedRole} permissions updated for ${selectedFirm?.name}`); },
     onError: (e: any) => Alert.alert('Error', e?.response?.data?.message ?? 'Failed to save permissions'),

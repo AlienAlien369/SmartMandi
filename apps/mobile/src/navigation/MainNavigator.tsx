@@ -154,7 +154,11 @@ export function MainNavigator() {
     >
       {has('DASHBOARD') && <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Home' }} />}
       {has('TRUCKS')    && <Tab.Screen name="Trucks"    component={TrucksNavigator} />}
-      {has('KC')        && <Tab.Screen name="KCs"       component={KCsNavigator}   options={{ title: 'KC' }} />}
+      {/* KC tab is always registered so notification deep-links always work; hidden via tabBarButton if no access */}
+      <Tab.Screen name="KCs" component={KCsNavigator} options={{
+        title: 'KC',
+        tabBarButton: has('KC') ? undefined : () => null,
+      }} />
       {has('CUSTOMERS') && <Tab.Screen name="Customers" component={CustomersNavigator} />}
       <Tab.Screen name="More" component={MoreNavigator} />
     </Tab.Navigator>

@@ -56,6 +56,10 @@ export function TruckDetailScreen() {
       if (!data) {
         setArriveModal(false);
         setGateWeight('');
+        // Optimistic update so button is hidden offline
+        queryClient.setQueryData(['truck', params.truckId], (old: any) =>
+          old ? { ...old, status: 'ARRIVED', arrived_weight_kg: gateWeight } : old,
+        );
         Alert.alert('Saved Offline 📶', 'Truck arrival will be recorded when you reconnect.');
         return;
       }
@@ -83,6 +87,10 @@ export function TruckDetailScreen() {
         setActualWeight('');
         setRatePerKg('');
         setInamAmount('');
+        // Optimistic update so button is hidden offline
+        queryClient.setQueryData(['truck', params.truckId], (old: any) =>
+          old ? { ...old, status: 'CLOSED', actual_weight_kg: actualWeight } : old,
+        );
         Alert.alert('Saved Offline 📶', 'Truck closure will be recorded when you reconnect.');
         return;
       }
@@ -183,7 +191,7 @@ export function TruckDetailScreen() {
 
       {/* Arrive Modal */}
       <Modal visible={arriveModal} transparent animationType="slide" onRequestClose={() => setArriveModal(false)}>
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>🚛 Mark Truck Arrived</Text>
@@ -216,7 +224,7 @@ export function TruckDetailScreen() {
 
       {/* Close Truck Modal */}
       <Modal visible={closeModal} transparent animationType="slide" onRequestClose={() => setCloseModal(false)}>
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>✅ Close Truck</Text>

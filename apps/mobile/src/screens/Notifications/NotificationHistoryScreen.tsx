@@ -39,8 +39,13 @@ function formatTime(iso: string): string {
 export function NotificationHistoryScreen() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['notification-history'],
-    queryFn: () => notificationApi.getHistory({ limit: 100 }).then(r => r.data as NotificationRecord[]),
+    queryFn: () => notificationApi.getHistory({ limit: 100 }).then(r => {
+      // API may return { data: [...] } or array directly
+      const raw = r.data;
+      return (Array.isArray(raw) ? raw : (raw?.data ?? [])) as NotificationRecord[];
+    }),
     staleTime: 30 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000, // cache for 7 days for offline view
   });
 
   const notifications = data ?? [];

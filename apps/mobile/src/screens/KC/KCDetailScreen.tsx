@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
   Modal, TextInput, KeyboardAvoidingView, Platform, FlatList, Linking,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSelector } from 'react-redux';
 import type { RouteProp } from '@react-navigation/native';
@@ -22,6 +22,7 @@ interface GradeConfig { id: string; grade_code: string; grade_label: string; }
 
 export function KCDetailScreen() {
   const { params } = useRoute<RouteT>();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
   const perms = usePermissions('KC');
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
@@ -43,7 +44,7 @@ export function KCDetailScreen() {
   }>>([]);
   const [showGradePicker, setShowGradePicker] = useState<number | null>(null);
 
-  const { data: kc, isLoading } = useQuery<KacchaChittha>({
+  const { data: kc, isLoading, error, refetch } = useQuery<KacchaChittha>({
     queryKey: ['kc', params.kcId],
     queryFn: async () => {
       const { data } = await kcsApi.get(params.kcId);
@@ -69,6 +70,26 @@ export function KCDetailScreen() {
     staleTime: 300000,
   });
   const firmRateMode = baardanaConfig?.rate_mode ?? 'PER_KG';
+
+  // Payment modes for human-readable display
+  const { data: paymentModes } = useQuery({
+    queryKey: ['payment-modes'],
+    queryFn: async () => {
+      const { data } = await configApi.getPaymentModes();
+      return data as Array<{ id: string; mode_code: string; mode_label: string }>;
+    },
+    staleTime: 600000,
+  });
+  const resolvePaymentLabel = (p: { payment_mode_id?: string; is_udhar?: boolean; mode?: string }) => {
+    if (p.is_udhar) return 'Udhar';
+    if (paymentModes && p.payment_mode_id) {
+      const found = paymentModes.find(m => m.id === p.payment_mode_id);
+      if (found) return found.mode_label;
+    }
+    if (p.mode) return p.mode;
+    return 'Payment';
+  };
+
 
   const authorizeMutation = useMutation({
     mutationFn: async () => {
@@ -174,7 +195,7 @@ export function KCDetailScreen() {
     setEditItems(kc.line_items.map(item => {
       const mode = item.rate_mode ?? firmRateMode;
       return {
-        grade_config_id: item.grade_config_id ?? item.id,
+        grade_config_id: item.grade_config_id ?? '',  // empty string = invalid, will be caught on save
         grade_label: grades.find(g => g.id === item.grade_config_id)?.grade_label ?? item.grade_code ?? '—',
         quantity_bags: String(item.quantity_bags),
         total_weight_kg: String(item.weight_kg ?? item.total_weight_kg ?? ''),
@@ -194,7 +215,15 @@ export function KCDetailScreen() {
   if (isLoading) return <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />;
   if (!kc) return (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>KC not found</Text>
+      <Text style={styles.emptyText}>{error ? 'Failed to load KC' : 'KC not found'}</Text>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 12 }}>
+        <Text style={{ color: colors.primary, fontSize: 16 }}>← Go Back</Text>
+      </TouchableOpacity>
+      {error ? (
+        <TouchableOpacity onPress={() => refetch()} style={{ marginTop: 8 }}>
+          <Text style={{ color: colors.primary, fontSize: 14 }}>Retry</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
@@ -233,6 +262,10 @@ export function KCDetailScreen() {
           <TouchableOpacity
             style={styles.pdfBtn}
             onPress={() => {
+              if (!isOnline) {
+                Alert.alert('Offline', 'Connect to the internet to download the PDF.');
+                return;
+              }
               const url = kcsApi.getPdfUrl(params.kcId, accessToken);
               Linking.openURL(url).catch(() =>
                 Alert.alert('Error', 'Could not open PDF. Make sure a PDF viewer is installed.'),
@@ -343,7 +376,7 @@ export function KCDetailScreen() {
             <Text style={styles.sectionTitle}>Payments ({kc.payments.length})</Text>
             {kc.payments.map((p, i) => (
               <View key={p.id ?? i} style={styles.paymentRow}>
-                <Text style={styles.paymentMode}>{p.is_udhar ? 'UDHAR' : (p.mode ?? p.payment_mode_id?.slice(0, 8) ?? 'Payment')}</Text>
+                <Text style={styles.paymentMode}>{resolvePaymentLabel(p)}</Text>
                 <Text style={styles.paymentAmount}>₹{p.amount}</Text>
               </View>
             ))}
@@ -373,7 +406,7 @@ export function KCDetailScreen() {
 
       {/* Cancel Modal */}
       <Modal visible={cancelModal} transparent animationType="slide" onRequestClose={() => setCancelModal(false)}>
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>Cancel KC?</Text>

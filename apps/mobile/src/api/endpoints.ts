@@ -3,6 +3,8 @@ import { API_BASE_URL } from './constants';
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
+  sendOtp: (phone: string, firmId: string) =>
+    api.post('/auth/send-otp', { phone, firm_id: firmId }),
   login: (phone: string, otp: string, firmId: string, deviceId: string) =>
     api.post('/auth/login', { phone, otp, firm_id: firmId, device_id: deviceId }),
   refresh: (refreshToken: string) =>

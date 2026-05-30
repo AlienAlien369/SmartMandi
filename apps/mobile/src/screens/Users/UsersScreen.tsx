@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert, ActivityIndicator, ScrollView,
+  Modal, TextInput, Alert, ActivityIndicator, ScrollView, RefreshControl,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../api/endpoints';
@@ -47,7 +47,7 @@ export function UsersScreen() {
     setShowModal(true);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const { data } = await usersApi.list({ page: 1, limit: 100 });
@@ -78,11 +78,12 @@ export function UsersScreen() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
+      if (!editingUser) throw new Error('No user selected');
       if (!isOnline) {
-        await offlineQueue.enqueue('PATCH', `/users/${editingUser!.id}`, { name, role });
+        await offlineQueue.enqueue('PATCH', `/users/${editingUser.id}`, { name, role });
         return null;
       }
-      return usersApi.update(editingUser!.id, { name, role });
+      return usersApi.update(editingUser.id, { name, role });
     },
     onSuccess: (data) => {
       if (!data) {
@@ -150,6 +151,7 @@ export function UsersScreen() {
           data={users}
           keyExtractor={u => u.id}
           contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
           ListEmptyComponent={<Text style={styles.empty}>No team members yet</Text>}
           renderItem={({ item }) => (
             <View style={styles.card}>
@@ -266,8 +268,8 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: spacing[1] },
   editBtn: { backgroundColor: colors.info + '18', borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: 2 },
   editBtnText: { fontSize: typography.size.xs, color: colors.info, fontWeight: typography.weight.semibold },
-  deleteBtn: { backgroundColor: colors.error + '18', borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: 2 },
-  deleteBtnText: { fontSize: typography.size.xs, color: colors.error, fontWeight: typography.weight.bold },
+  deleteBtn: { backgroundColor: colors.danger + '18', borderRadius: radius.sm, paddingHorizontal: spacing[2], paddingVertical: 2 },
+  deleteBtnText: { fontSize: typography.size.xs, color: colors.danger, fontWeight: typography.weight.bold },
   empty: { textAlign: 'center', color: colors.textSecondary, paddingTop: 60, fontSize: typography.size.base },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modal: { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing[6], maxHeight: '90%' },

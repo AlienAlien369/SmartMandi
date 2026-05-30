@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { configApi } from '../../api/endpoints';
+import { API_BASE_URL } from '../../api/constants';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 
 export function SettingsScreen() {
@@ -65,7 +66,7 @@ export function SettingsScreen() {
           {[
             { label: 'Version', value: '2.0.0' },
             { label: 'Environment', value: __DEV__ ? 'Development' : 'Production' },
-            { label: 'API', value: __DEV__ ? 'Local (192.168.1.36:3000)' : 'Production' },
+            { label: 'API', value: API_BASE_URL },
           ].map((item, i, arr) => (
             <React.Fragment key={item.label}>
               <View style={styles.row}>

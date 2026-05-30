@@ -14,6 +14,8 @@ class SyncEngine {
   private unsubscribe: (() => void) | null = null;
 
   start(): void {
+    // Reset any operations stuck in PROCESSING from a previous crash/kill
+    offlineQueue.resetStuck().catch(() => {});
     this.unsubscribe = NetInfo.addEventListener(state => {
       if (state.isConnected && state.isInternetReachable !== false) {
         this.flush();
@@ -56,7 +58,9 @@ class SyncEngine {
 
           // Resolve and enqueue any linked operations (e.g. KC payments after KC create)
           if (op.linked_ops && op.linked_ops.length > 0) {
-            const responseData: Record<string, unknown> = response?.data ?? {};
+            // API may wrap response in { data: {...} } — unwrap both patterns
+            const responseData: Record<string, unknown> =
+              response?.data?.data ?? response?.data ?? {};
             await this.enqueueLinkedOps(op.linked_ops, responseData);
           }
         } catch (err: any) {

@@ -49,7 +49,15 @@ export function RootNavigator() {
     // Cold start — app opened from killed state via notification
     getInitialNotification().then(data => {
       if (data?.type === 'KC_AUTHORIZED' && data.kc_id) {
-        navigateToKC(data.kc_id);
+        // Navigator may not be ready yet — poll until ready
+        const tryNav = () => {
+          if (navigationRef.current?.isReady()) {
+            navigateToKC(data.kc_id as string);
+          } else {
+            setTimeout(tryNav, 100);
+          }
+        };
+        tryNav();
       }
     });
 

@@ -43,7 +43,7 @@ export function OtpVerifyScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>

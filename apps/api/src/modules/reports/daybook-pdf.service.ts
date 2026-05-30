@@ -140,7 +140,7 @@ export class DaybookPdfService {
       `SELECT truck_id, SUM(amount) AS freight
        FROM salary_entries
        WHERE firm_id = $1
-         AND freight_type = 'DRIVER_KIRAYA'
+         AND freight_type = 'KIRAYA'
          AND truck_id IS NOT NULL
          AND salary_date BETWEEN $2::date AND $3::date
        GROUP BY truck_id`,

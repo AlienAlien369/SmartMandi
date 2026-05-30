@@ -56,6 +56,7 @@ export const colors = {
 
   // ── Legacy aliases (keep backward compat) ──────────────────────────────────
   background:        '#f5fdf7',
+  text:              '#0d1f14',   // alias for textPrimary
   error:             '#dc2626',
   divider:           'rgba(22,163,74,0.10)',
   borderLight:       'rgba(22,163,74,0.07)',
@@ -74,8 +75,10 @@ export const typography = {
   title:    { fontSize: 20, fontWeight: '700' as const, letterSpacing: -0.4 },
   heading:  { fontSize: 17, fontWeight: '600' as const, letterSpacing: -0.1 },
   body:     { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
+  bodyMd:   { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
   caption:  { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
   label:    { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.8 },
+  labelSm:  { fontSize: 11, fontWeight: '600' as const, letterSpacing: 0.5 },
   number:   { fontSize: 22, fontWeight: '800' as const },
   mono:     { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 14 },
   size: { xs: 11, sm: 13, base: 15, md: 16, lg: 18, xl: 20, '2xl': 24, '3xl': 30, '4xl': 36 },
@@ -91,7 +94,7 @@ export const spacing = {
 };
 
 export const radius = {
-  xs: 4, sm: 8, md: 14, lg: 18, xl: 26, full: 9999,
+  xs: 4, sm: 8, md: 14, lg: 18, xl: 26, '2xl': 32, full: 9999,
 };
 
 // ── Green-tinted shadows — the "secret sauce" of this theme ──────────────────

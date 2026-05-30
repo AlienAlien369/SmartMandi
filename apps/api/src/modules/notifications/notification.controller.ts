@@ -1,18 +1,20 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentFirmId } from '../../common/decorators/current-user.decorator';
 import { NotificationService } from './notification.service';
 
 @ApiTags('notifications')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('notifications')
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
   @Get('history')
+  @RequirePermission('NOTIFICATIONS', 'read')
   @ApiOperation({ summary: 'Get notification history for the current firm' })
   getHistory(
     @CurrentFirmId() firmId: string,

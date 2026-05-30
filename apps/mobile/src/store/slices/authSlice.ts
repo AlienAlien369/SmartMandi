@@ -8,7 +8,7 @@ import type { User, AuthState } from '../../types';
 // All module IDs — used as fallback when RBAC fetch fails (FIRM_HEAD gets all)
 const ALL_MODULE_IDS = [
   'DASHBOARD', 'TRUCKS', 'KC', 'CUSTOMERS', 'LEDGER',
-  'SUMMARY_SHEETS', 'REPORTS', 'SALARY', 'USERS', 'SETTINGS', 'ROLE_PERMISSIONS',
+  'SUMMARY_SHEETS', 'REPORTS', 'SALARY', 'USERS', 'SETTINGS', 'ROLE_PERMISSIONS', 'NOTIFICATIONS',
 ];
 
 const initialState: AuthState = {
@@ -20,36 +20,45 @@ const initialState: AuthState = {
   saToken: null,
   accessibleModuleIds: ALL_MODULE_IDS,
   permissions: {},
+  loginError: null,
 };
 
 export const login = createAsyncThunk(
   'auth/login',
-  async ({ phone, otp, firmId, deviceId }: { phone: string; otp: string; firmId: string; deviceId: string }) => {
-    const { data } = await authApi.login(phone, otp, firmId, deviceId);
-    await AsyncStorage.multiSet([
-      ['access_token', data.access_token],
-      ['refresh_token', data.refresh_token],
-      ['user', JSON.stringify(data.user)],
-    ]);
-    // Fetch accessible modules with fresh token immediately after login
-    let moduleIds: string[] = ALL_MODULE_IDS;
+  async (
+    { phone, otp, firmId, deviceId }: { phone: string; otp: string; firmId: string; deviceId: string },
+    { rejectWithValue },
+  ) => {
     try {
-      const modsRes = await axios.get(`${API_BASE_URL}/rbac/my-modules`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      moduleIds = (modsRes.data as Array<{ id: string }>).map(m => m.id);
-    } catch {
-      if (data.user?.role === 'FIRM_HEAD') moduleIds = ALL_MODULE_IDS;
-      else moduleIds = ['DASHBOARD'];
+      const { data } = await authApi.login(phone, otp, firmId, deviceId);
+      await AsyncStorage.multiSet([
+        ['access_token', data.access_token],
+        ['refresh_token', data.refresh_token],
+        ['user', JSON.stringify(data.user)],
+      ]);
+      // Fetch accessible modules with fresh token immediately after login
+      let moduleIds: string[] = ALL_MODULE_IDS;
+      try {
+        const modsRes = await axios.get(`${API_BASE_URL}/rbac/my-modules`, {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        });
+        moduleIds = (modsRes.data as Array<{ id: string }>).map(m => m.id);
+      } catch {
+        if (data.user?.role === 'FIRM_HEAD') moduleIds = ALL_MODULE_IDS;
+        else moduleIds = ['DASHBOARD'];
+      }
+      let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
+      try {
+        const permsRes = await axios.get(`${API_BASE_URL}/rbac/my-permissions`, {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        });
+        permissions = permsRes.data;
+      } catch {}
+      return { ...data, accessibleModuleIds: moduleIds, permissions };
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Login failed';
+      return rejectWithValue(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
-    let permissions: Record<string, { can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }> = {};
-    try {
-      const permsRes = await axios.get(`${API_BASE_URL}/rbac/my-permissions`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      permissions = permsRes.data;
-    } catch {}
-    return { ...data, accessibleModuleIds: moduleIds, permissions };
   },
 );
 
@@ -131,7 +140,10 @@ const authSlice = createSlice({
         AsyncStorage.setItem('accessible_module_ids', JSON.stringify(action.payload.accessibleModuleIds));
         AsyncStorage.setItem('permissions', JSON.stringify(action.payload.permissions));
       })
-      .addCase(login.rejected, state => { state.isLoading = false; })
+      .addCase(login.rejected, (state, action) => {
+        state.isLoading = false;
+        state.loginError = (action.payload as string) ?? action.error.message ?? 'Login failed';
+      })
       .addCase(loginSuperAdmin.pending, state => { state.isLoading = true; })
       .addCase(loginSuperAdmin.fulfilled, (state, action) => {
         state.isLoading = false;

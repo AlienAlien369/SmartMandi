@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../../api/endpoints';
@@ -66,7 +66,7 @@ export function LedgerScreen() {
     return p;
   }, [selectedType, range]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['ledger', selectedType, range.from, range.to],
     queryFn: async () => {
       const { data } = await reportsApi.ledger(queryParams);
@@ -162,6 +162,7 @@ export function LedgerScreen() {
           keyExtractor={e => e.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyIcon}>📒</Text>

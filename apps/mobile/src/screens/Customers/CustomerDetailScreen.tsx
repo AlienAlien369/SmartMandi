@@ -82,7 +82,14 @@ export function CustomerDetailScreen() {
   };
 
   if (isLoading) return <ActivityIndicator style={styles.flex1} size="large" color={colors.primary} />;
-  if (error || !history) return <View style={styles.centered}><Text style={styles.errorText}>Failed to load customer history</Text></View>;
+  if (error || !history) return (
+    <View style={styles.centered}>
+      <Text style={styles.errorText}>Failed to load customer history</Text>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 12 }}>
+        <Text style={{ color: colors.primary, fontSize: 16 }}>← Go Back</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const { customer, outstanding_udhar, credit_balance, total_purchase_amount, total_kcs, kcs } = history;
 

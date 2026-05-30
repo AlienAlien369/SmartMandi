@@ -41,6 +41,10 @@ export class CreateTruckDto {
   @IsOptional() @Matches(UUID_RE, UUID_MSG)
   commission_config_id?: string;
 
+  @ApiPropertyOptional({ example: 'Nasik, Maharashtra' })
+  @IsOptional() @IsString() @MaxLength(200)
+  source_location?: string;
+
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(500)
   notes?: string;

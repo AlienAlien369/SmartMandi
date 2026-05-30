@@ -197,6 +197,9 @@ export function KCListScreen() {
             <View style={styles.cardTop}>
               <View style={styles.cardLeft}>
                 <Text style={styles.kcNumber}>{item.kc_number}</Text>
+                {item.customer_name ? (
+                  <Text style={styles.customerName} numberOfLines={1}>👨‍🌾 {item.customer_name}</Text>
+                ) : null}
                 <Text style={styles.dateText}>{item.sale_date}</Text>
               </View>
               <View style={styles.cardRight}>
@@ -352,6 +355,7 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardLeft: { flex: 1, marginRight: spacing[3] },
   kcNumber: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.textPrimary },
+  customerName: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 2 },
   dateText: { fontSize: typography.size.sm, color: colors.textMuted, marginTop: 2 },
   cardRight: { alignItems: 'flex-end', gap: spacing[1] },
   amountText: { fontSize: typography.size.sm, color: colors.primary, fontWeight: typography.weight.semibold, marginTop: spacing[1] },

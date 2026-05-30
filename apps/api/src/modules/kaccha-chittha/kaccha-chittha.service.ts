@@ -52,8 +52,8 @@ export class KacchaChitthaService {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async create(dto: CreateKCDto, firmId: string, userId: string): Promise<KacchaChittha> {
-    // Idempotency check
-    const existing = await this.kcRepo.findOne({ where: { idempotency_key: dto.idempotency_key } });
+    // Idempotency check — must be scoped to firm_id to prevent cross-tenant leak
+    const existing = await this.kcRepo.findOne({ where: { idempotency_key: dto.idempotency_key, firm_id: firmId } });
     if (existing) return existing;
 
     const qr = this.dataSource.createQueryRunner();
@@ -169,10 +169,11 @@ export class KacchaChitthaService {
     }
 
     if (filters.search) {
-      qb.andWhere(
-        '(kc.kc_number ILIKE :search)',
-        { search: `%${filters.search}%` },
-      );
+      qb.leftJoin('customers', 'c', 'c.id = kc.customer_id AND c.firm_id = kc.firm_id')
+        .andWhere(
+          '(kc.kc_number ILIKE :search OR c.name ILIKE :search)',
+          { search: `%${filters.search.trim()}%` },
+        );
     }
 
     if (filters.truck_id)    qb.andWhere('kc.truck_id = :truckId',       { truckId:    filters.truck_id });
@@ -272,7 +273,7 @@ export class KacchaChitthaService {
       throw new ConflictException('Payments can only be added to DRAFT KCs');
     }
 
-    const existing = await this.paymentRepo.findOne({ where: { idempotency_key: dto.idempotency_key } });
+    const existing = await this.paymentRepo.findOne({ where: { idempotency_key: dto.idempotency_key, firm_id: firmId } });
     if (existing) return existing;
 
     const payment = this.paymentRepo.create({

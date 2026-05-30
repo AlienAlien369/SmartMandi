@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Alert,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Modal,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, BackHandler,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { kcsApi, configApi, customersApi, trucksApi } from '../../api/endpoints';
 import type { KCStackParamList } from '../../types';
@@ -37,6 +37,15 @@ export function KCCreateScreen() {
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const { isOnline } = useNetworkState();
+
+  // Android hardware back button navigates to previous wizard step
+  useFocusEffect(useCallback(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step > 0) { setStep(s => s - 1); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [step]));
 
   // Wizard step
   const [step, setStep] = useState(0);
@@ -98,16 +107,19 @@ export function KCCreateScreen() {
     queryKey: ['paymentModes'],
     queryFn: async () => {
       const { data } = await configApi.getPaymentModes();
-      const modes = (data ?? []) as PaymentMode[];
-      modes.forEach(m => {
-        if (m.mode_code?.toUpperCase() === 'CASH') setCashModeId(m.id);
-        else if (m.mode_code?.toUpperCase() === 'UPI') setUpiModeId(m.id);
-        else if (m.mode_code?.toUpperCase() === 'UDHAR') setUdharModeId(m.id);
-      });
-      return modes;
+      return (data ?? []) as PaymentMode[];
     },
     staleTime: 60000,
   });
+
+  // Resolve payment mode IDs after fetch — setState must NOT be in queryFn
+  useEffect(() => {
+    paymentModesData?.forEach(m => {
+      if (m.mode_code?.toUpperCase() === 'CASH') setCashModeId(m.id);
+      else if (m.mode_code?.toUpperCase() === 'UPI') setUpiModeId(m.id);
+      else if (m.mode_code?.toUpperCase() === 'UDHAR') setUdharModeId(m.id);
+    });
+  }, [paymentModesData]);
 
   const { data: baardanaConfig } = useQuery({
     queryKey: ['baardana-config'],
@@ -274,7 +286,7 @@ export function KCCreateScreen() {
 
   return (
     <>
-      <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {/* ── Progress Bar ── */}
         <View style={styles.progressBar}>
           {STEPS.map((label, idx) => (
@@ -626,7 +638,7 @@ export function KCCreateScreen() {
 
       {/* Add Customer Modal */}
       <Modal visible={addCustModal} transparent animationType="slide" onRequestClose={() => setAddCustModal(false)}>
-        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>Naya Kharidaar Banao</Text>

@@ -83,7 +83,20 @@ export function RolePermissionsScreen() {
           <TouchableOpacity
             key={role}
             style={[styles.roleChip, selectedRole === role && styles.roleChipActive]}
-            onPress={() => { setSelectedRole(role); setIsDirty(false); }}
+            onPress={() => {
+              if (isDirty) {
+                Alert.alert(
+                  'Unsaved Changes',
+                  `Discard unsaved changes to ${selectedRole} permissions?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Discard', style: 'destructive', onPress: () => { setSelectedRole(role); setIsDirty(false); } },
+                  ],
+                );
+              } else {
+                setSelectedRole(role);
+              }
+            }}
           >
             <Text style={[styles.roleChipText, selectedRole === role && styles.roleChipTextActive]}>
               {role}

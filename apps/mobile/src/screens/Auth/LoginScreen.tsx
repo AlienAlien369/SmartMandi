@@ -6,9 +6,10 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../types';
+import { authApi } from '../../api/endpoints';
+import { extractApiError } from '../../utils/errorUtils';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
 import { Input } from '../../components/ui';
-import { Button } from '../../components/ui';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
@@ -36,12 +37,19 @@ export function LoginScreen() {
     if (phone.length < 10) { Alert.alert('Invalid', 'Please enter a valid 10-digit phone number'); return; }
     if (!firmId.trim()) { Alert.alert('Required', 'Please enter your Firm ID'); return; }
     setLoading(true);
-    setLoading(false);
-    navigation.navigate('OtpVerify', { phone, firm_id: firmId });
+    try {
+      // In dev mode, backend auto-accepts any OTP — still call so prod works correctly
+      await authApi.sendOtp(phone, firmId).catch(() => {}); // non-fatal if endpoint not found
+      navigation.navigate('OtpVerify', { phone, firm_id: firmId });
+    } catch (e: any) {
+      Alert.alert('Error', extractApiError(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* ── Decorative background orbs ── */}
       <GlowOrb style={styles.orb1} />
       <GlowOrb style={styles.orb2} />

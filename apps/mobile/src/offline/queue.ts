@@ -102,6 +102,14 @@ class OfflineQueue {
     await this.db!.executeSql(`UPDATE operation_queue SET status = 'PROCESSING' WHERE id = ?`, [id]);
   }
 
+  /** Reset items stuck in PROCESSING after app crash — call on sync engine start */
+  async resetStuck(): Promise<void> {
+    await this.ensureInit();
+    await this.db!.executeSql(
+      `UPDATE operation_queue SET status = 'PENDING' WHERE status = 'PROCESSING'`,
+    );
+  }
+
   async markDone(id: string): Promise<void> {
     await this.ensureInit();
     await this.db!.executeSql(`UPDATE operation_queue SET status = 'DONE' WHERE id = ?`, [id]);

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar, Platform } from 'react-native';
 import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,8 +8,13 @@ import Toast from 'react-native-toast-message';
 import { store } from './src/store';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { syncEngine } from './src/offline/syncEngine';
-import { registerBackgroundMessageHandler, setupForegroundHandler, createNotificationChannels, setupNotifeeEventHandler } from './src/services/NotificationService';
-import { colors } from './src/theme';
+import {
+  registerBackgroundMessageHandler,
+  setupForegroundHandler,
+  createNotificationChannels,
+  setupNotifeeEventHandler,
+  requestNotificationPermission,
+} from './src/services/NotificationService';
 
 // MUST be called at module level — before any component mounts
 registerBackgroundMessageHandler();
@@ -32,8 +37,13 @@ export default function App() {
   useEffect(() => {
     syncEngine.start();
 
-    // Create notification channels (HIGH importance = stays in tray like WhatsApp)
-    createNotificationChannels();
+    // Step 1: Create notification channels FIRST (must exist before requesting permission)
+    createNotificationChannels().then(() => {
+      // Step 2: Ask for notification permission immediately on first launch.
+      // Android shows the system dialog only once — subsequent calls are silent no-ops.
+      // iOS also shows the native prompt on first call.
+      requestNotificationPermission();
+    });
 
     // Set up foreground handler — shows OS notification in tray + in-app toast
     let unsubscribeForeground: (() => void) | null = null;
@@ -41,7 +51,6 @@ export default function App() {
 
     // Handle taps on notifications while app is open
     const unsubNotifee = setupNotifeeEventHandler((data) => {
-      // Navigation handled by RootNavigator via onNotificationOpenedApp
       console.log('Notification tapped:', data);
     });
 

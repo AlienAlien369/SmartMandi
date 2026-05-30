@@ -22,10 +22,12 @@ You are a Senior React Native Engineer fixing and improving screens in Smart Man
 2. **Always use `rbacApi.getMyModules()`** for role/permission screens — not `getAllModules()`.
 3. **Always check `accessibleModuleIds` from Redux** before rendering tabs or navigating to restricted screens.
 4. **Super Admin flow** is entirely separate — `isSuperAdmin` flag in Redux, `SADashboardScreen` is the SA home.
-5. **Amounts display in Rupees** — divide by 100 if stored as paise, or use `toFixed(2)` on Decimal strings.
+5. **Amounts display in Rupees** — use `toFixed(2)` on Decimal strings (DB and API both use rupees, not paise).
 6. **React Query keys**: use descriptive arrays like `['customers', customerId, 'history']` — never plain strings.
 7. **No inline styles** — always use `StyleSheet.create()` with design tokens.
 8. **JSX must be well-formed** — every opening tag has a matching closing tag; ScrollView wraps must be balanced.
+9. **Notifications use notifee** — `@notifee/react-native@9.1.8`; call `createNotificationChannels()` before `requestNotificationPermission()`; use `NotificationService.displayNotification()` for all notification display; do NOT call FCM's default display directly.
+10. **Notification permission is requested on first launch** — `App.tsx` calls `requestNotificationPermission()` on mount; do not add duplicate calls.
 
 ## Design System Quick Reference
 ```typescript

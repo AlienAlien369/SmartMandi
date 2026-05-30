@@ -1,6 +1,6 @@
 # Smart Mandi — Feature Tracking (Persistent Memory)
 ## Updated after every phase — agent context file
-## Current: Phase 11 PDF Generation & SA Config Expansion (COMPLETE)
+## Current: Phase 12 Persistent Notifications & App Branding (COMPLETE)
 
 ---
 
@@ -366,6 +366,52 @@
 
 ---
 
+## ✅ PHASE 12 — Persistent Notifications, App Branding & Schema Fixes (COMPLETE)
+
+### App Name & Branding
+- [x] Android app name changed to **"Smart Mandi"** (`strings.xml` → `app_name`)
+- [x] Launcher icons zoomed 2× across all densities (mdpi → xxxhdpi, regular + round) — logo fills icon canvas without padding
+
+### Persistent Push Notifications (WhatsApp-style)
+- [x] Installed `@notifee/react-native@9.1.8` (with `--legacy-peer-deps`)
+- [x] `NotificationService.ts` fully rewritten:
+  - `createNotificationChannels()`: creates `kc_updates` channel with `AndroidImportance.HIGH` (heads-up popup + permanent tray entry)
+  - `requestNotificationPermission()`: requests Android `POST_NOTIFICATIONS` permission at runtime
+  - `displayNotification(opts)`: posts notification via notifee with vibration + default sound; `id` fallback to `notif-${Date.now()}` prevents "invalid notification ID" crash
+  - `setupForegroundHandler()`: foreground in-app notifications via notifee (replacing Toast-only behavior)
+  - `registerBackgroundMessageHandler()`: background/killed-app notifications via notifee (replacing FCM's silent default channel)
+- [x] `App.tsx` updated:
+  - On mount: `createNotificationChannels()` → `requestNotificationPermission()` (channels must exist before requesting permission on some Android versions)
+  - Registers notifee background event handler
+- [x] `AndroidManifest.xml`: added `POST_NOTIFICATIONS`, `VIBRATE`, `RECEIVE_BOOT_COMPLETED` permissions
+- [x] `ic_stat_notification.xml` vector drawable created (white small notification icon)
+
+### DB Schema Fixes (Migrations 013–020)
+- [x] **Migration 013** (`013_fix_trucks_schema`): truck schema corrections
+- [x] **Migration 014** (`014_produce_configs`): produce configuration table
+- [x] **Migration 015** (`015_notification_history`): notification_history table for persistent notification storage
+- [x] **Migration 016** (`016_notifications_module`): notifications module + bug fix — `firm_module_access.granted_by` changed from `'system'` (invalid UUID) to `NULL`
+- [x] **Migration 017–018**: additional schema updates
+- [x] **Migration 019** (`019_trucks_schema_complete`): adds missing trucks columns (`truck_number`, `produce_name`, `sale_date`, `arrived_weight_kg`, `arrived_at`, etc.) + makes `purchase_entries.idempotency_key` nullable
+- [x] **Migration 020** (`020_seed_role_permissions`): seeds AUTHORIZER / OPERATOR / VIEWER default CRUD permissions for all modules
+
+### Truck Service Bug Fixes
+- [x] `trucks.service.ts` — `arriveTruck()`: adds `idempotency_key: 'arrive-${id}'` to PurchaseEntry insert (was missing → NULL constraint violation)
+- [x] `trucks.service.ts` — `closeTruck()`: adds `idempotency_key: 'close-${id}'` to fallback PurchaseEntry insert
+
+### Role Permissions Seeding (Migration 020)
+- [x] **AUTHORIZER**: `can_read=true, can_update=true` for TRUCKS and KCS modules
+- [x] **OPERATOR**: `can_create=true, can_read=true` for TRUCKS and KCS modules
+- [x] **VIEWER**: `can_read=true` for all firm-assigned modules
+
+### Dev/Test Sample Data (EC2 Seeded)
+- [x] 4 trucks seeded: T1 (Matar/RJ14GB0001 — CLOSED), T2 (Tamatar/UP32CD0042 — CLOSED), T3 (Pyaaz/HR26AA1234 — ARRIVED), T4 (Aloo/DL01AB5678 — ARRIVED)
+- [x] 7 KCs created and 4 authorized (KC1, KC2, KC3, KC7); payments added to KC1–KC3, KC5
+- [x] 3 salary entries: KIRAYA ₹2,500, PARCHI ₹150, INAM ₹500
+- [x] Dashboard: 7 KCs · ₹5,84,710 total sales · ₹11,694 commission · 17,840 kg sold
+
+---
+
 ## SEEDED TEST CREDENTIALS
 
 | Role | Phone | Firm ID | Notes |
@@ -416,7 +462,7 @@
 - Custom fields UI (mobile) not yet implemented — data model is ready (CustomFieldDef + CustomFieldValue), no controller/service registered yet
 - Commission truck-level override UI (mobile) not yet implemented
 - Push notifications require `google-services.json` (FCM) — not committed to repo; must be added from Firebase console before building Android
-- FCM notifications only tested via API; end-to-end device delivery needs real Firebase project
+- **Notifee** (`@notifee/react-native@9.1.8`) handles notification display on Android — FCM delivers the payload, notifee renders the heads-up popup and tray entry; `kc_updates` channel at `AndroidImportance.HIGH`
 - Amounts in DB are **rupees (NUMERIC 14,2)**, not paise — API transport also in rupees
 - Base URL for API does NOT include `firm_id` — firm ID comes from JWT claim only
 - `SalaryController` is tagged `freight` in Swagger — module name in code is `salary`
@@ -448,6 +494,10 @@ When resuming from a new session, read this file first. Key facts:
 18. **Push notifications** — KC authorization triggers FCM to authorizer + FIRM_HEAD via NotificationService
 19. **Freight = Salary module** — `salary_entries` table tagged `freight` in API; has `freight_type` column
 20. **API base path has no firm_id in URL** — `firm_id` comes from JWT exclusively; routes are `/api/v1/trucks` not `/api/v1/:firmId/trucks`
-21. **Migrations are 001–012** — migrations 006–009 added baardana, rate_mode, freight_type, grades; 010–012 added firm_pdf_config (KC PDF, buyer summary PDF, daybook PDF)
+21. **Migrations are 001–020** — 006–009: baardana/rate_mode/freight_type/grades; 010–012: firm_pdf_config (KC/buyer summary/daybook PDF); 013: trucks schema fix; 014: produce_configs; 015: notification_history; 016: notifications_module (granted_by NULL fix); 019: trucks_schema_complete + purchase_entries.idempotency_key nullable; 020: seed role permissions
 22. **PDF is SA-gated** — `pdf_enabled`, `buyer_summary_pdf_enabled`, `daybook_pdf_enabled` flags in `firm_pdf_config`; SA sets via `PUT /super-admin/firms/:firmId/config/pdf`; PDF endpoints accept JWT via `Authorization` header or `?token=` query param
 23. **SA config endpoints use /config/ prefix** — all SA firm config routes: `/super-admin/firms/:firmId/config/apmc-fee|commission|baardana|grades|pdf`
+24. **Push notifications use notifee** — `@notifee/react-native` creates `kc_updates` HIGH importance channel; `displayNotification()` shows heads-up popup that persists in notification tray; works foreground + background + killed app
+25. **Notification permission requested on first launch** — `App.tsx` calls `requestNotificationPermission()` after `createNotificationChannels()` on mount; triggers Android system permission dialog
+26. **purchase_entries.idempotency_key is nullable** — migration 019 made it nullable; trucks.service.ts sets `'arrive-${id}'` / `'close-${id}'` explicitly
+27. **App name is "Smart Mandi"** — `android/app/src/main/res/values/strings.xml`; launcher icons zoomed 2× (all densities)

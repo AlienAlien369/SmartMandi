@@ -3,7 +3,7 @@
 > **Production-grade, multi-tenant SaaS for digital APMC mandi management**  
 > NestJS 10 · PostgreSQL 15 · React Native 0.74 · AWS SQS · Redis 7  
 > Offline-first · Event-driven · Append-only ledger · Row-Level Security · Dynamic RBAC  
-> **Phase 11 COMPLETE** — PDF Generation (KC · Buyer Summary · Daybook) · SA Config Expansion
+> **Phase 12 COMPLETE** — Persistent Push Notifications (notifee) · App Branding · Schema Fixes
 
 ---
 
@@ -33,7 +33,7 @@ SF/
 │   │       │   ├── decorators/     # @RequirePermission, @CurrentUser, @CurrentFirmId
 │   │       │   └── interceptors/   # FirmContextInterceptor (RLS injection)
 │   │       └── database/
-│   │           └── migrations/     # 001–012 SQL migrations
+│   │           └── migrations/     # 001–020 SQL migrations
 │   └── mobile/                 # React Native 0.74 + Expo SDK 50
 │       └── src/
 │           ├── api/            # Typed API client + all endpoint wrappers
@@ -66,7 +66,7 @@ cd apps/api
 cp .env.example .env           # Fill in DB + JWT + Redis config
 docker compose up -d           # Start PostgreSQL + Redis
 npm install
-npm run migration:run          # Run migrations 001–012
+npm run migration:run          # Run migrations 001–020
 npm run start:dev              # Hot-reload dev server → http://localhost:3000
 # Swagger UI: http://localhost:3000/api
 ```
@@ -115,6 +115,12 @@ Super Admin
 - `@RequirePermission(module, action)` decorator on every write/delete endpoint
 - `FIRM_HEAD` bypasses all permission checks — always has full access
 - SA can configure role permissions for any firm via `/super-admin/firms/:id/role-permissions/:role`
+
+### Push Notifications (WhatsApp-style persistent)
+- KC authorization triggers **notifee** heads-up notification that stays in notification tray
+- `kc_updates` channel at `AndroidImportance.HIGH` — vibration + default sound
+- Works foreground, background, and when app is killed (`@notifee/react-native@9.1.8`)
+- Notification permission dialog shown on first app launch via `requestNotificationPermission()`
 
 ---
 

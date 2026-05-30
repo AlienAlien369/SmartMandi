@@ -1,5 +1,5 @@
 # Smart Mandi — High-Level Design (HLD)
-## Version 2.0 · Phase 11 PDF Generation & SA Config Expansion (All Phases Complete)
+## Version 2.0 · Phase 12 Persistent Notifications & App Branding (All Phases Complete)
 
 ---
 
@@ -204,7 +204,7 @@ sequenceDiagram
 | Custom Fields | Dynamic entity extension (field defs + values) | 6 |
 | RBAC | Module access control, dynamic role permissions | 7 |
 | Super Admin | Cross-firm management, module + permission + full config assignment | 7/11 |
-| Notifications | FCM push on KC authorization | 10 |
+| Notifications | FCM push on KC authorization — notifee HIGH importance channel, WhatsApp-style persistent tray notifications | 10/12 |
 | PDF Config | SA-gated firm PDF settings (KC, buyer summary, daybook) | 11 |
 
 ---
@@ -337,4 +337,4 @@ sequenceDiagram
 
 ---
 
-*Last updated: Phase 11 — PDF Generation, SA Config Expansion (all phases complete)*
+*Last updated: Phase 12 — Persistent Notifications (notifee), App Branding & Schema Fixes (all phases complete)*

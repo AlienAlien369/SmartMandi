@@ -336,6 +336,9 @@ import { API_BASE_URL } from '../api/constants';
 - ❌ Never generate KC PDF / Buyer Summary PDF / Daybook PDF without checking the corresponding `firm_pdf_config` flag (`pdf_enabled` / `buyer_summary_pdf_enabled` / `daybook_pdf_enabled`) — throw `ForbiddenException` if disabled
 - ❌ Never hard-code `firm_short_name` or `footer_text` in PDF templates — always fetch from `firm_pdf_config`
 - ❌ Never add SA config endpoints (apmc-fee, commission, baardana, grades, pdf) under `/super-admin/firms/:id/` directly — they go under the `/config/` sub-prefix (e.g. `/super-admin/firms/:id/config/pdf`)
+- ❌ Never call FCM's default notification display directly in the mobile app — always use `NotificationService.displayNotification()` which uses notifee internally
+- ❌ Never call `requestNotificationPermission()` before `createNotificationChannels()` — channels must be created first or the permission dialog may not work correctly on some Android versions
+- ❌ Never pass `undefined` as `notification.id` to notifee — always provide a non-empty string or fall back to `` `notif-${Date.now()}` ``
 
 ---
 

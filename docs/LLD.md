@@ -1,5 +1,5 @@
 # Smart Mandi — Low-Level Design (LLD)
-## Version 2.0 · Phase 11 PDF Generation & SA Config Expansion (All Phases Complete)
+## Version 2.0 · Phase 12 Persistent Notifications & App Branding (All Phases Complete)
 
 ---
 

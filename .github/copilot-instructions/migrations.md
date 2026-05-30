@@ -10,7 +10,7 @@ model: claude-sonnet-4-6
 You are a PostgreSQL DBA writing migrations for Smart Mandi.
 
 ## Read These First
-- `apps/api/src/database/migrations/` — existing migrations (001–012)
+- `apps/api/src/database/migrations/` — existing migrations (001–020)
 - `docs/LLD.md` — Section 6 (ER diagram) for current schema
 
 ## Current Migrations
@@ -24,10 +24,17 @@ You are a PostgreSQL DBA writing migrations for Smart Mandi.
 | 006 | baardana_configs: add baardana_provider column (FIRM_OWNED \| DRIVER_PROVIDED) |
 | 007 | kc_line_items: add rate_mode column (RATE_PER_KG \| RATE_PER_NAG) |
 | 008 | salary_entries: add freight_type column (EMPLOYEE_SALARY \| DRIVER_INAM \| DRIVER_KIRAYA \| DRIVER_PARCHI) |
-| 009 | Add driver freight support columns |
+| 009 | Add driver freight support columns (driver_id, driver_name on salary_entries) |
 | 010 | firm_pdf_config table: pdf_enabled, pdf_format, firm_short_name, footer_text + RLS |
 | 011 | firm_pdf_config: add buyer_summary_pdf_enabled BOOLEAN |
 | 012 | firm_pdf_config: add daybook_pdf_enabled BOOLEAN |
+| 013 | trucks schema fix (initial corrections) |
+| 014 | produce_configs table: firm-specific produce configuration |
+| 015 | notification_history table: persistent notification records per user |
+| 016 | notifications_module: bug fix — `firm_module_access.granted_by` changed from `'system'` (invalid UUID) to `NULL` |
+| 017–018 | Additional schema updates |
+| 019 | trucks_schema_complete: adds missing trucks columns (`truck_number`, `produce_name`, `sale_date`, `arrived_weight_kg`, `arrived_at`, etc.); makes `purchase_entries.idempotency_key` nullable |
+| 020 | seed_role_permissions: seeds AUTHORIZER (read+update KCS/TRUCKS), OPERATOR (create+read KCS/TRUCKS), VIEWER (read-only) defaults |
 
 ## Migration Rules
 1. Every migration has **UP** and **DOWN** scripts
@@ -35,7 +42,7 @@ You are a PostgreSQL DBA writing migrations for Smart Mandi.
 3. **NEVER DROP COLUMN** — add new column as nullable, migrate data, then mark deprecated
 4. All financial columns use `NUMERIC(14,2)` — never `FLOAT` or `DECIMAL` without precision
 5. Always add matching index for new foreign keys
-6. Follow numbering: next is `013`
+6. Follow numbering: next is `021`
 
 ## RLS Policy Template
 ```sql

@@ -299,7 +299,7 @@ You are a React Native Engineer fixing bugs in the Smart Mandi mobile app.
 ```yaml
 ---
 name: notification-engineer
-description: "Implements and debugs FCM push notification flows for Smart Mandi"
+description: "Implements and debugs FCM + notifee push notification flows for Smart Mandi"
 tools: [read, write, search, shell]
 model: claude-sonnet-4-6
 ---
@@ -313,21 +313,34 @@ You are a Mobile/Backend Engineer handling push notifications in Smart Mandi.
 - FCM device tokens stored on `users.fcm_token` column
 - Mobile registers token via: `POST /users/fcm-token` on login
 
+## Mobile Notification Stack (Phase 12)
+- **Package**: `@notifee/react-native@9.1.8` (installed with `--legacy-peer-deps`)
+- **Channel**: `kc_updates` at `AndroidImportance.HIGH` — heads-up + permanent tray entry
+- **Display**: `NotificationService.displayNotification(opts)` — works foreground + background + killed
+- **ID fallback**: `opts.id ?? \`notif-${Date.now()}\`` — prevents "invalid notification ID" crash
+- **Background handler**: `setBackgroundMessageHandler` → `notifee.displayNotification()` (NOT FCM default display)
+- **Foreground handler**: `setupForegroundHandler()` via notifee event listener
+- **Permission**: `requestNotificationPermission()` called on app mount AFTER `createNotificationChannels()`
+
 ## Key Files
+- `apps/mobile/src/services/NotificationService.ts` — full notification system
+- `apps/mobile/App.tsx` — channel creation + permission request on mount
+- `apps/mobile/android/app/src/main/AndroidManifest.xml` — POST_NOTIFICATIONS, VIBRATE, RECEIVE_BOOT_COMPLETED
+- `apps/mobile/android/app/src/main/res/drawable/ic_stat_notification.xml` — white vector notification icon
 - `apps/api/src/modules/events/event-consumer.service.ts` — dispatches notifications
 - `apps/api/src/modules/users/users.service.ts` — stores fcm_token
-- `apps/mobile/src/api/endpoints.ts` — `usersApi.saveFcmToken(token)`
 
 ## When Adding New Notification Triggers
 1. Add event type to EventStoreService
 2. Add handler in EventConsumerService
 3. Call NotificationService.send(recipients, payload)
-4. Mobile: ensure all routes that need notification are handled in onMessage/onNotificationOpenedApp
+4. Mobile: call `displayNotification()` from `NotificationService.ts` — do NOT call notifee directly
 
 ## Important
-- google-services.json must exist in android/app/ (not committed — get from Firebase console)
+- `google-services.json` must exist in `android/app/` (not committed — get from Firebase console)
 - Test with: `POST /users/fcm-token` with valid FCM token, then trigger KC authorization
-- FCM token expires and must be refreshed via Firebase SDK onTokenRefresh callback
+- FCM token expires and must be refreshed via Firebase SDK `onTokenRefresh` callback
+- Notifee channel must exist BEFORE permission is requested (some Android versions enforce this)
 ```
 
 ---

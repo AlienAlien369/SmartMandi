@@ -9,7 +9,7 @@ import type { AuthStackParamList } from '../../types';
 import { authApi } from '../../api/endpoints';
 import { extractApiError } from '../../utils/errorUtils';
 import { colors, typography, spacing, radius, shadow } from '../../theme';
-import { Input } from '../../components/ui';
+import { Input, Button } from '../../components/ui';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 

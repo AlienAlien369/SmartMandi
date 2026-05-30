@@ -32,10 +32,11 @@ export function TruckCreateScreen() {
   });
   const [showProducePicker, setShowProducePicker] = useState(false);
 
-  const { data: producesData } = useQuery({
+  const { data: producesData, isError: producesError } = useQuery({
     queryKey: ['produces'],
     queryFn: () => configApi.getProduces().then(r => r.data as Array<{ id: string; name: string }>),
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   const produces = producesData ?? [];
@@ -104,32 +105,43 @@ export function TruckCreateScreen() {
             keyboardType="phone-pad"
           />
 
-          {/* Produce Dropdown */}
-          <Text style={styles.label}>Produce / Maal *</Text>
-          <TouchableOpacity
-            style={[styles.dropdown, !form.produce_name && styles.dropdownEmpty]}
-            onPress={() => produces.length > 0 && setShowProducePicker(!showProducePicker)}
-          >
-            <Text style={form.produce_name ? styles.dropdownValue : styles.dropdownPlaceholder}>
-              {form.produce_name || (produces.length === 0 ? 'No produces configured' : 'Select produce...')}
-            </Text>
-            <Text style={styles.dropdownArrow}>{showProducePicker ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {showProducePicker && (
-            <View style={styles.dropdownList}>
-              {produces.map(p => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.dropdownItem, form.produce_name === p.name && styles.dropdownItemSelected]}
-                  onPress={() => { setField('produce_name', p.name); setShowProducePicker(false); }}
-                >
-                  <Text style={[styles.dropdownItemText, form.produce_name === p.name && styles.dropdownItemTextSelected]}>
-                    {p.name}
-                  </Text>
-                  {form.produce_name === p.name && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-              ))}
-            </View>
+          {/* Produce — dropdown when configured, free-text fallback otherwise */}
+          {produces.length > 0 ? (
+            <>
+              <Text style={styles.label}>Produce / Maal *</Text>
+              <TouchableOpacity
+                style={[styles.dropdown, !form.produce_name && styles.dropdownEmpty]}
+                onPress={() => setShowProducePicker(!showProducePicker)}
+              >
+                <Text style={form.produce_name ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                  {form.produce_name || 'Select produce...'}
+                </Text>
+                <Text style={styles.dropdownArrow}>{showProducePicker ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {showProducePicker && (
+                <View style={styles.dropdownList}>
+                  {produces.map(p => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.dropdownItem, form.produce_name === p.name && styles.dropdownItemSelected]}
+                      onPress={() => { setField('produce_name', p.name); setShowProducePicker(false); }}
+                    >
+                      <Text style={[styles.dropdownItemText, form.produce_name === p.name && styles.dropdownItemTextSelected]}>
+                        {p.name}
+                      </Text>
+                      {form.produce_name === p.name && <Text style={styles.checkmark}>✓</Text>}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <Input
+              label="Produce / Maal *"
+              value={form.produce_name}
+              onChangeText={v => setField('produce_name', v)}
+              placeholder="e.g. Matar, Tamatar, Aloo..."
+            />
           )}
 
           <Input

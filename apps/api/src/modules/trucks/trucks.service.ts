@@ -138,6 +138,7 @@ export class TrucksService {
         total_amount: '0.00',
         is_estimated: true,
         created_by: userId,
+        idempotency_key: `arrive-${id}`,
       });
       await qr.manager.save(PurchaseEntry, estimated);
 
@@ -228,6 +229,7 @@ export class TrucksService {
           total_amount: grossAmount.toFixed(2),
           is_estimated: false,
           created_by: userId,
+          idempotency_key: `close-${id}`,
         });
         await qr.manager.save(PurchaseEntry, entry);
       }

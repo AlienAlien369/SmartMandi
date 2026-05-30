@@ -11,7 +11,7 @@ const TS_GR     = 14;  // GR-NO
 const TS_NAME   = 20;  // Source / Driver
 const TS_GROSS  = 13;  // GROSS AMT
 const TS_FRGT   = 12;  // FREIGHT
-const TS_CART   = 10;  // CARTAGE
+const TS_CART   = 10;  // INAM
 const TS_COMM   = 12;  // COMMISSION
 const TS_TELE   = 12;  // TELE&POST (APMC)
 const TS_BAARD  = 12;  // BARDANA
@@ -256,7 +256,7 @@ export class DaybookPdfService {
         padR('Name',   TS_NAME)+
         padL('GROSS AMT',  TS_GROSS)+
         padL('FREIGHT',    TS_FRGT) +
-        padL('CARTAGE',    TS_CART) +
+        padL('INAM',       TS_CART) +
         padL('COMMISSION', TS_COMM) +
         padL('TELE&POST',  TS_TELE) +
         padL('BARDANA',    TS_BAARD)+
@@ -388,7 +388,7 @@ export class DaybookPdfService {
       kcRow(`  ${fmtAmt(gtNet)}  By FRESH         ${totalBags} Case     ${fmtAmt(gtGross)}  By GROSS`, FS_SM);
       kcRow(`  ${fmtAmt(gtComm)}  By COMMISSION`, FS_SM);
       kcRow(`  ${fmtAmt(gtFreight)}  By FREIGHT A/C`, FS_SM);
-      kcRow(`  ${fmtAmt(gtCart)}  By CARTAGE A/C`, FS_SM);
+      kcRow(`  ${fmtAmt(gtCart)}  By INAM A/C`, FS_SM);
       kcRow(`  ${fmtAmt(gtTele)}  By APMC A/C`, FS_SM);
       kcRow(`  ${fmtAmt(gtBaard)}  By BARDANA A/C`, FS_SM);
       kcSep();

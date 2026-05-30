@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert, ActivityIndicator, ScrollView,
+  Modal, TextInput, Alert, ActivityIndicator, ScrollView, RefreshControl,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { salaryApi, usersApi, trucksApi } from '../../api/endpoints';
@@ -60,7 +60,7 @@ export function SalaryScreen() {
   const [showTruckPicker, setShowTruckPicker] = useState(false);
 
   // ── Queries ───────────────────────────────────────────────────────────
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['freight', filterType, filterFrom, filterTo],
     queryFn: async () => {
       const params: Record<string, string> = { page: '1', limit: '100' };
@@ -255,6 +255,14 @@ export function SalaryScreen() {
           data={entries}
           keyExtractor={e => e.id}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={refetch}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>🚛</Text>

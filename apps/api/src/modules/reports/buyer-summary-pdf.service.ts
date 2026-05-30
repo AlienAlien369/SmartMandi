@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 const PDFDocument = require('pdfkit');
 
 // Column widths for A4 landscape-style wide receipt
-// PURCHA(7) NAME(30) Case(5) WEIGHT(9) GROSS AMT(13) %APMC(10) @BARDANA(10) @CARTAGE(10) NET AMT(12) = ~106 chars
+// PURCHA(7) NAME(30) Case(5) WEIGHT(9) GROSS AMT(13) %APMC(10) @BARDANA(10) @INAM(10) NET AMT(12) = ~106 chars
 const C_PURCHA  = 7;
 const C_NAME    = 30;
 const C_CASE    = 6;
@@ -162,7 +162,7 @@ export class BuyerSummaryPdfService {
         padL('GROSS AMT', C_GROSS) +
         padL('%A.P.M.C.', C_APMC) +
         padL('@BARDANA', C_BAARD) +
-        padL('@CARTAGE', C_CART)  +
+        padL('@INAM',    C_CART)  +
         padL('NET AMT',  C_NET);
 
       // ── Header ──────────────────────────────────────────────────────────────

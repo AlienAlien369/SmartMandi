@@ -86,7 +86,7 @@ export async function displayNotification(opts: {
 }): Promise<void> {
   try {
     await notifee.displayNotification({
-      id: opts.id,
+      id: opts.id ?? `notif-${Date.now()}`,
       title: `<b>${opts.title}</b>`,
       body: opts.body,
       data: opts.data ?? {},
@@ -160,7 +160,7 @@ export async function setupForegroundHandler(): Promise<() => void> {
 
     // Display in notification tray (persists like WhatsApp)
     await displayNotification({
-      id: data.kc_id ?? undefined,
+      id: data.kc_id ? String(data.kc_id) : undefined,
       title,
       body,
       channelId: type === 'KC_AUTHORIZED' ? CHANNEL_KC : CHANNEL_GENERAL,
@@ -248,7 +248,7 @@ export function registerBackgroundMessageHandler(): void {
       const type  = data.type as string | undefined;
 
       await displayNotification({
-        id: data.kc_id ?? undefined,
+        id: data.kc_id ? String(data.kc_id) : undefined,
         title,
         body,
         channelId: type === 'KC_AUTHORIZED' ? CHANNEL_KC : CHANNEL_GENERAL,

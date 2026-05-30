@@ -8,7 +8,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Grant NOTIFICATIONS module to dev firm
 INSERT INTO firm_module_access (firm_id, module_id, is_active, granted_by)
-SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID, 'NOTIFICATIONS', TRUE, 'system'
+SELECT '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID, 'NOTIFICATIONS', TRUE, NULL
 WHERE EXISTS (SELECT 1 FROM firms WHERE id = '115c557f-0c07-4162-b3bc-84f1feab88fb'::UUID)
 ON CONFLICT (firm_id, module_id) DO UPDATE SET is_active = TRUE;
 

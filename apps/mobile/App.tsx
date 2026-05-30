@@ -8,7 +8,7 @@ import Toast from 'react-native-toast-message';
 import { store } from './src/store';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { syncEngine } from './src/offline/syncEngine';
-import { registerBackgroundMessageHandler, setupForegroundHandler } from './src/services/NotificationService';
+import { registerBackgroundMessageHandler, setupForegroundHandler, createNotificationChannels, setupNotifeeEventHandler } from './src/services/NotificationService';
 import { colors } from './src/theme';
 
 // MUST be called at module level — before any component mounts
@@ -32,13 +32,23 @@ export default function App() {
   useEffect(() => {
     syncEngine.start();
 
-    // Set up foreground notification handler (shows Toast banner)
+    // Create notification channels (HIGH importance = stays in tray like WhatsApp)
+    createNotificationChannels();
+
+    // Set up foreground handler — shows OS notification in tray + in-app toast
     let unsubscribeForeground: (() => void) | null = null;
     setupForegroundHandler().then(unsub => { unsubscribeForeground = unsub; });
+
+    // Handle taps on notifications while app is open
+    const unsubNotifee = setupNotifeeEventHandler((data) => {
+      // Navigation handled by RootNavigator via onNotificationOpenedApp
+      console.log('Notification tapped:', data);
+    });
 
     return () => {
       syncEngine.stop();
       unsubscribeForeground?.();
+      unsubNotifee();
     };
   }, []);
 

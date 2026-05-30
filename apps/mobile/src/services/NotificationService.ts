@@ -1,32 +1,25 @@
 /**
- * FCM Notification Service for Smart Mandi
+ * FCM + Notifee Notification Service for Smart Mandi
  *
- * NATIVE SETUP REQUIRED (one-time, per platform):
+ * Uses @react-native-firebase/messaging for token & FCM delivery,
+ * and @notifee/react-native to display WhatsApp-style persistent
+ * notifications in the Android notification tray.
  *
- * ANDROID:
- *   1. Download google-services.json from Firebase Console
- *      (Project Settings > Your apps > Add Android app > package: com.smartmandi)
- *   2. Place it at: apps/mobile/android/app/google-services.json
- *   3. In apps/mobile/android/build.gradle, add:
- *        classpath 'com.google.gms:google-services:4.4.0'
- *   4. In apps/mobile/android/app/build.gradle, add at bottom:
- *        apply plugin: 'com.google.gms.google-services'
- *
- * IOS:
- *   1. Download GoogleService-Info.plist from Firebase Console
- *   2. Place at: apps/mobile/ios/SmartMandi/GoogleService-Info.plist
- *   3. Open Xcode > drag GoogleService-Info.plist into the project
- *   4. In Xcode > Signing & Capabilities > add Push Notifications capability
- *   5. cd apps/mobile/ios && pod install
+ * Channel: 'kc_updates' — HIGH importance (heads-up + stays in tray)
  */
+import notifee, { AndroidImportance, AndroidVisibility, EventType } from '@notifee/react-native';
 import { usersApi } from '../api/endpoints';
 
+// ─── Channel IDs ─────────────────────────────────────────────────────────────
+export const CHANNEL_KC   = 'kc_updates';
+export const CHANNEL_GENERAL = 'general';
+
 let messaging: any = null;
+let _channelCreated = false;
 
 async function getMessaging(): Promise<any> {
   if (messaging) return messaging;
   try {
-    // Dynamic import to avoid crash if native module not linked yet
     const firebaseMessaging = require('@react-native-firebase/messaging').default;
     messaging = firebaseMessaging();
     return messaging;
@@ -36,18 +29,108 @@ async function getMessaging(): Promise<any> {
 }
 
 /**
- * Request permission and get FCM token. Call after successful login.
- * Returns the token string, or null if unavailable.
+ * Create Android notification channels. Call ONCE at app startup (App.tsx).
+ * Channels are idempotent — safe to call on every launch.
+ */
+export async function createNotificationChannels(): Promise<void> {
+  if (_channelCreated) return;
+  try {
+    // HIGH importance → heads-up popup + stays in notification tray (like WhatsApp)
+    await notifee.createChannel({
+      id: CHANNEL_KC,
+      name: 'KC Updates',
+      description: 'Kaccha Chittha authorization and status updates',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      vibration: true,
+      sound: 'default',
+    });
+    await notifee.createChannel({
+      id: CHANNEL_GENERAL,
+      name: 'General',
+      description: 'General Smart Mandi alerts',
+      importance: AndroidImportance.DEFAULT,
+      visibility: AndroidVisibility.PRIVATE,
+      vibration: true,
+      sound: 'default',
+    });
+    _channelCreated = true;
+  } catch (err) {
+    console.warn('notifee createChannel failed:', err);
+  }
+}
+
+/**
+ * Request POST_NOTIFICATIONS permission (Android 13+ / iOS).
+ * Call after login, once per install.
+ */
+export async function requestNotificationPermission(): Promise<boolean> {
+  try {
+    const settings = await notifee.requestPermission();
+    return settings.authorizationStatus >= 1; // AUTHORIZED or PROVISIONAL
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Display a notification in the OS tray using notifee.
+ * Works in foreground, background, and quit state.
+ */
+export async function displayNotification(opts: {
+  id?: string;
+  title: string;
+  body: string;
+  channelId?: string;
+  data?: Record<string, string>;
+}): Promise<void> {
+  try {
+    await notifee.displayNotification({
+      id: opts.id,
+      title: `<b>${opts.title}</b>`,
+      body: opts.body,
+      data: opts.data ?? {},
+      android: {
+        channelId: opts.channelId ?? CHANNEL_KC,
+        smallIcon: 'ic_stat_notification', // must exist in drawable
+        color: '#1A6B3C',
+        pressAction: { id: 'default' },
+        // autoCancel=false means it stays until user swipes it away
+        autoCancel: false,
+        ongoing: false,
+        // Show full content even on lock screen
+        visibility: AndroidVisibility.PUBLIC,
+        // Heads-up notification (peeks over current screen like WhatsApp)
+        importance: AndroidImportance.HIGH,
+      },
+      ios: {
+        sound: 'default',
+        badgeCount: 1,
+        foregroundPresentationOptions: {
+          alert: true,
+          badge: true,
+          sound: true,
+          banner: true,
+          list: true,
+        },
+      },
+    });
+  } catch (err) {
+    console.warn('notifee displayNotification failed:', err);
+  }
+}
+
+/**
+ * Request permission and register FCM token with the backend.
+ * Call after successful login.
  */
 export async function registerFcmToken(): Promise<string | null> {
   try {
+    // Request notification permission via notifee (handles Android 13+)
+    await requestNotificationPermission();
+
     const m = await getMessaging();
     if (!m) return null;
-
-    // Request permission (iOS requires this, Android auto-grants on API 33+)
-    const authStatus = await m.requestPermission();
-    const enabled = authStatus === 1 || authStatus === 2; // AUTHORIZED or PROVISIONAL
-    if (!enabled) return null;
 
     const token = await m.getToken();
     if (token) {
@@ -61,39 +144,72 @@ export async function registerFcmToken(): Promise<string | null> {
 }
 
 /**
- * Set up foreground notification handler. Call once in App.tsx.
- * Shows a Toast banner (like WhatsApp heads-up) when a notification arrives
- * while the app is in the foreground.
- * Returns an unsubscribe function.
+ * Set up foreground handler — displays REAL OS notification via notifee
+ * (stays in tray, not just a toast). Also shows toast for in-app feedback.
+ * Returns unsubscribe function.
  */
 export async function setupForegroundHandler(): Promise<() => void> {
   const m = await getMessaging();
   if (!m) return () => {};
-  return m.onMessage(async (remoteMessage: any) => {
+
+  const unsubFCM = m.onMessage(async (remoteMessage: any) => {
     const title = remoteMessage.notification?.title ?? 'Smart Mandi';
     const body  = remoteMessage.notification?.body  ?? '';
-    const type  = remoteMessage.data?.type;
+    const data  = remoteMessage.data ?? {};
+    const type  = data.type as string | undefined;
 
-    // Dynamic import to avoid circular dep
-    const Toast = require('react-native-toast-message').default;
-    Toast.show({
-      type: type === 'KC_AUTHORIZED' ? 'success' : 'info',
-      text1: title,
-      text2: body,
-      position: 'top',
-      visibilityTime: 5000,
-      topOffset: 50,
+    // Display in notification tray (persists like WhatsApp)
+    await displayNotification({
+      id: data.kc_id ?? undefined,
+      title,
+      body,
+      channelId: type === 'KC_AUTHORIZED' ? CHANNEL_KC : CHANNEL_GENERAL,
+      data,
     });
+
+    // Also show in-app toast for immediate feedback
+    try {
+      const Toast = require('react-native-toast-message').default;
+      Toast.show({
+        type: type === 'KC_AUTHORIZED' ? 'success' : 'info',
+        text1: title,
+        text2: body,
+        position: 'top',
+        visibilityTime: 4000,
+        topOffset: 50,
+      });
+    } catch (_) {}
+  });
+
+  return unsubFCM;
+}
+
+/**
+ * Handle taps on notifee notifications (foreground events).
+ * Call once in App.tsx or RootNavigator.
+ */
+export function setupNotifeeEventHandler(
+  onPress: (data: Record<string, string>) => void,
+): () => void {
+  return notifee.onForegroundEvent(({ type, detail }) => {
+    if (type === EventType.PRESS && detail.notification?.data) {
+      onPress(detail.notification.data as Record<string, string>);
+    }
   });
 }
 
 /**
- * Get the notification that opened the app from killed/background state.
- * Call in RootNavigator after navigation is ready.
- * Returns the data payload, or null.
+ * Get the notification that opened the app from killed state.
+ * Returns data payload or null.
  */
 export async function getInitialNotification(): Promise<Record<string, string> | null> {
   try {
+    // Check notifee initial notification
+    const notifeeInitial = await notifee.getInitialNotification();
+    if (notifeeInitial?.notification?.data) {
+      return notifeeInitial.notification.data as Record<string, string>;
+    }
+    // Fallback to FCM
     const m = await getMessaging();
     if (!m) return null;
     const message = await m.getInitialNotification();
@@ -105,7 +221,6 @@ export async function getInitialNotification(): Promise<Record<string, string> |
 
 /**
  * Subscribe to notification taps (background → foreground).
- * Call in RootNavigator. Returns unsubscribe function.
  */
 export async function onNotificationOpenedApp(
   callback: (data: Record<string, string>) => void,
@@ -120,13 +235,34 @@ export async function onNotificationOpenedApp(
 /**
  * Register background/quit-state handler.
  * MUST be called at module level (outside any component) in App.tsx.
+ * When FCM delivers a message in background/quit, we display it via notifee
+ * so it appears in the notification tray with HIGH importance.
  */
 export function registerBackgroundMessageHandler(): void {
   try {
     const firebaseMessaging = require('@react-native-firebase/messaging').default;
-    firebaseMessaging().setBackgroundMessageHandler(async (_remoteMessage: any) => {
-      // FCM shows the OS notification automatically in background/quit state.
-      // No action required here unless you need background data processing.
+    firebaseMessaging().setBackgroundMessageHandler(async (remoteMessage: any) => {
+      const title = remoteMessage.notification?.title ?? 'Smart Mandi';
+      const body  = remoteMessage.notification?.body  ?? '';
+      const data  = remoteMessage.data ?? {};
+      const type  = data.type as string | undefined;
+
+      await displayNotification({
+        id: data.kc_id ?? undefined,
+        title,
+        body,
+        channelId: type === 'KC_AUTHORIZED' ? CHANNEL_KC : CHANNEL_GENERAL,
+        data,
+      });
     });
   } catch (_) {}
 }
+
+// Register notifee background handler for taps on notifications
+// when the app is fully closed
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  if (type === EventType.PRESS) {
+    // App will be launched — data available via getInitialNotification()
+    console.log('Notifee background press:', detail.notification?.data);
+  }
+});
